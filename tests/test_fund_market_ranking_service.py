@@ -104,7 +104,16 @@ def test_market_rankings_build_public_proxy_groups_without_personalization() -> 
     assert result["personalization"]["user_profile_used"] is False
     assert result["personalization"]["holdings_used"] is False
     groups = {group["rank_type"]: group for group in result["groups"]}
-    assert {"etf_net_inflow", "etf_net_outflow", "etf_turnover_heat", "open_fund_return_rank"} <= set(groups)
+    assert {
+        "etf_net_inflow",
+        "etf_net_outflow",
+        "etf_turnover_heat",
+        "open_fund_return_rank",
+        "industry_heat_top10",
+        "industry_product_top10",
+        "public_buy_proxy_rank",
+        "public_sell_proxy_rank",
+    } <= set(groups)
 
     inflow = groups["etf_net_inflow"]["items"][0]
     assert inflow["code"] == "159516"
@@ -125,8 +134,23 @@ def test_market_rankings_build_public_proxy_groups_without_personalization() -> 
     assert open_fund["evidence_metrics"]["actual_subscription_amount"] is None
     assert open_fund["evidence_metrics"]["proxy_return_3m_pct"] == 133.41
 
+    industry = groups["industry_heat_top10"]["items"][0]
+    assert industry["name"] == "半导体"
+    assert industry["metrics"]["product_count"] >= 1
+    assert industry["evidence_metrics"]["actual_buy_amount"] is None
+    assert industry["recommendation_role"] == "market_industry_evidence"
+
+    industry_product = groups["industry_product_top10"]["items"][0]
+    assert industry_product["industry"] == "半导体"
+    assert industry_product["recommendation_role"] == "market_industry_product_evidence"
+
+    buy_proxy = groups["public_buy_proxy_rank"]["items"][0]
+    assert buy_proxy["code"] == "159516"
+    assert buy_proxy["evidence_metrics"]["availability"] == "not_supported"
+
     assert result["recommendation_candidates"]
     assert result["recommendation_candidates"][0]["personalized"] is False
+    assert "industry_product_top10" in result["recommendation_candidates"][0]["evidence_rank_types"]
 
 
 def test_market_rankings_empty_sources_fail_without_fabricating_items() -> None:

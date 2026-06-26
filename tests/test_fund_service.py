@@ -886,6 +886,12 @@ def test_fund_ledger_supports_local_account_profile_create_update_and_list() -> 
         risk_target="balanced",
         investment_horizon="3y+",
         rebalance_frequency="quarterly",
+        drawdown_tolerance="10_20",
+        liquidity_need="within_1y",
+        investment_experience="familiar",
+        monthly_budget=3000,
+        cash_reserve_months=6,
+        preferred_fund_types="指数,红利",
         notes="只记录本地目标，不接个人平台账户",
     )
     moved = service.assign_fund_ledger("110022", ledger["id"])
@@ -894,6 +900,11 @@ def test_fund_ledger_supports_local_account_profile_create_update_and_list() -> 
         risk_target="aggressive",
         investment_horizon="5y+",
         rebalance_frequency="ad_hoc",
+        drawdown_tolerance="20_30",
+        liquidity_need="long_term",
+        investment_experience="experienced",
+        monthly_budget=5000,
+        cash_reserve_months=12,
         notes=None,
     )
     pool_after = service.list_pool()
@@ -904,14 +915,26 @@ def test_fund_ledger_supports_local_account_profile_create_update_and_list() -> 
     assert ledger["risk_target"] == "balanced"
     assert ledger["investment_horizon"] == "3y+"
     assert ledger["rebalance_frequency"] == "quarterly"
+    assert ledger["drawdown_tolerance"] == "10_20"
+    assert ledger["liquidity_need"] == "within_1y"
+    assert ledger["investment_experience"] == "familiar"
+    assert ledger["monthly_budget"] == 3000.0
+    assert ledger["cash_reserve_months"] == 6.0
+    assert ledger["preferred_fund_types"] == "指数,红利"
     assert moved["ledger_id"] == ledger["id"]
     assert updated["risk_target"] == "aggressive"
     assert updated["investment_horizon"] == "5y+"
     assert updated["rebalance_frequency"] == "ad_hoc"
+    assert updated["drawdown_tolerance"] == "20_30"
+    assert updated["liquidity_need"] == "long_term"
+    assert updated["investment_experience"] == "experienced"
+    assert updated["monthly_budget"] == 5000.0
+    assert updated["cash_reserve_months"] == 12.0
     assert updated["notes"] is None
     assert listed["account_type"] == "education"
     assert listed["purpose"] == "孩子教育金"
     assert listed["risk_target"] == "aggressive"
+    assert listed["monthly_budget"] == 5000.0
     assert listed["fund_count"] == 1
 
 
@@ -972,11 +995,19 @@ def test_fund_ledger_profile_columns_migrate_existing_sqlite() -> None:
         service = FundService(repo=repo, provider=FakeFundProvider())
         pool = service.list_pool()
         default_ledger = pool["ledgers"][0]
-        updated = service.update_ledger_profile(default_ledger["id"], account_type="long_term")
+        updated = service.update_ledger_profile(
+            default_ledger["id"],
+            account_type="long_term",
+            monthly_budget=2000,
+            cash_reserve_months=4,
+        )
 
         assert default_ledger["account_type"] is None
         assert default_ledger["purpose"] is None
+        assert default_ledger["monthly_budget"] is None
         assert updated["account_type"] == "long_term"
+        assert updated["monthly_budget"] == 2000.0
+        assert updated["cash_reserve_months"] == 4.0
 
 
 def test_create_ledger_rejects_duplicate_name_without_overwriting_profile() -> None:

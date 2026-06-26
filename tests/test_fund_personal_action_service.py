@@ -73,6 +73,12 @@ def test_personal_actions_become_actionable_with_profile_and_analysis() -> None:
         risk_target="growth",
         investment_horizon="3y_plus",
         rebalance_frequency="monthly",
+        drawdown_tolerance="20_30",
+        liquidity_need="long_term",
+        investment_experience="experienced",
+        monthly_budget=5000,
+        cash_reserve_months=12,
+        preferred_fund_types="主动权益,指数",
     )
     repo.save_analysis_snapshot(
         {
@@ -128,6 +134,8 @@ def test_personal_actions_become_actionable_with_profile_and_analysis() -> None:
     assert action["action_label"] == "加仓"
     assert action["confidence"] == "high"
     assert action["profile"]["risk_target"] == "growth"
+    assert action["profile"]["drawdown_tolerance"] == "20_30"
+    assert action["profile"]["monthly_budget"] == 5000.0
     assert action["evidence"]["analysis"]["signal_score"] == 82.0
     assert action["position_context"]["market_value"] == 12000.0
     assert action["position_context"]["ledger_weight_pct"] == 100.0
@@ -138,6 +146,8 @@ def test_personal_actions_become_actionable_with_profile_and_analysis() -> None:
     assert action["market_context"]["status"] == "proxy_only"
     assert action["suggested_trade"]["status"] == "ready"
     assert action["suggested_trade"]["amount_max"] is not None
+    assert action["suggested_trade"]["profile_constraints"]["monthly_budget"] == 5000.0
+    assert action["suggested_trade"]["profile_constraints"]["liquidity_need"] == "long_term"
     assert action["suggested_trade"]["requires_cash_confirmation"] is True
     assert action["decision_trace"]
 
@@ -169,6 +179,10 @@ def test_personal_actions_size_reduce_from_confirmed_position() -> None:
         risk_target="balanced",
         investment_horizon="1y",
         rebalance_frequency="monthly",
+        drawdown_tolerance="10_20",
+        liquidity_need="within_1y",
+        investment_experience="familiar",
+        cash_reserve_months=6,
     )
     repo.save_analysis_snapshot(
         {

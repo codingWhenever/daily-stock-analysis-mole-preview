@@ -38,6 +38,26 @@ class MinimalFundProvider:
             return [FundMetadata(code="001603", name="易方达安盈回报混合A", fund_type="混合型")][:limit]
         if "交银中证海外中国互联网指数" in query:
             return [FundMetadata(code="164906", name="交银中证海外中国互联网指数(LOF)A", fund_type="QDII")][:limit]
+        if "德邦半导体产业混合发起式" in query or "德邦半导体产业" in query:
+            return [
+                FundMetadata(code="014319", name="德邦半导体产业混合发起式A", fund_type="混合型"),
+                FundMetadata(code="014320", name="德邦半导体产业混合发起式C", fund_type="混合型"),
+            ][:limit]
+        if "德邦鑫星价值灵活配置混合" in query:
+            return [
+                FundMetadata(code="001412", name="德邦鑫星价值灵活配置混合A", fund_type="混合型"),
+                FundMetadata(code="002112", name="德邦鑫星价值灵活配置混合C", fund_type="混合型"),
+            ][:limit]
+        if "金信稳健策略混合" in query or "金信稳健策略" in query:
+            return [
+                FundMetadata(code="007872", name="金信稳健策略混合A", fund_type="混合型"),
+                FundMetadata(code="020436", name="金信稳健策略混合C", fund_type="混合型"),
+            ][:limit]
+        if "华夏创业板成长ETF联接" in query:
+            return [
+                FundMetadata(code="007474", name="华夏创业板成长ETF联接A", fund_type="指数型"),
+                FundMetadata(code="007475", name="华夏创业板成长ETF联接C", fund_type="指数型"),
+            ][:limit]
         if "易方达中证海外互联网50ETF联接" in query:
             return [
                 FundMetadata(code="006328", name="易方达中证海外互联网50ETF联接(QDII)C", fund_type="QDII"),
@@ -113,6 +133,9 @@ def test_parse_fund_holding_text_extracts_confirmable_fields() -> None:
     assert row["latest_nav"] == 5.4321
     assert row["as_of_date"] == "2026-06-26"
     assert row["confidence"] == "high"
+    assert row["field_confidence"]["code"] == "high"
+    assert row["field_confidence"]["market_value"] == "high"
+    assert row["field_confidence"]["units"] == "high"
 
 
 def test_rapidocr_output_object_converts_to_text_lines() -> None:
@@ -154,6 +177,11 @@ def test_layout_holding_rows_resolve_name_only_jd_finance_snapshot() -> None:
     assert rows[0]["units"] == 5485.63
     assert rows[0]["pnl_amount"] == 1571.32
     assert rows[0]["pnl_pct"] == 23.57
+    assert rows[0]["field_confidence"]["code"] == "medium"
+    assert rows[0]["field_confidence"]["market_value"] == "high"
+    assert rows[0]["field_confidence"]["cost_amount"] == "medium"
+    assert rows[0]["field_confidence"]["latest_nav"] == "medium"
+    assert rows[0]["field_confidence"]["units"] == "low"
     assert rows[1]["market_value"] == 20164.40
     assert rows[1]["cost_amount"] == 5000.0
     assert rows[1]["latest_nav"] == 8.1772
@@ -161,6 +189,55 @@ def test_layout_holding_rows_resolve_name_only_jd_finance_snapshot() -> None:
     assert rows[1]["pnl_amount"] == 15164.40
     assert rows[1]["pnl_pct"] == 303.29
     assert all("代码由" in " ".join(row["warnings"]) for row in rows)
+
+
+def test_layout_holding_rows_resolve_alipay_snapshot_headers() -> None:
+    service = _service()
+    lines = [
+        OCRTextLine("名称", 108, 644, 70, 620, 150, 670),
+        OCRTextLine("金额/昨日收益", 690, 645, 540, 620, 820, 670),
+        OCRTextLine("持有收益/率", 1037, 645, 900, 620, 1160, 670),
+        OCRTextLine("36,881.55", 708, 740, 620, 710, 820, 770),
+        OCRTextLine("德邦半导体产业混合C", 289, 741, 70, 710, 500, 770),
+        OCRTextLine("+26,165.63", 1027, 741, 900, 710, 1160, 770),
+        OCRTextLine("+244.18%", 1050, 802, 930, 770, 1160, 830),
+        OCRTextLine("+1,263.23", 720, 802, 620, 770, 820, 830),
+        OCRTextLine("投资锦囊 德邦半导体产业混合发起式最新投资策略...", 619, 913, 70, 880, 1160, 940),
+        OCRTextLine("12,676.81", 708, 1135, 620, 1100, 820, 1160),
+        OCRTextLine("+6,390.40", 1038, 1135, 900, 1100, 1160, 1160),
+        OCRTextLine("德邦鑫星价值灵活配置", 296, 1137, 70, 1100, 520, 1165),
+        OCRTextLine("混合C", 131, 1192, 70, 1165, 200, 1220),
+        OCRTextLine("+371.40", 736, 1197, 640, 1165, 830, 1225),
+        OCRTextLine("+101.65%", 1051, 1197, 930, 1165, 1160, 1225),
+        OCRTextLine("金信基金财富号>", 267, 1501, 70, 1470, 460, 1530),
+        OCRTextLine("68,107.44", 709, 1648, 620, 1615, 820, 1675),
+        OCRTextLine("+43,295.75", 1025, 1647, 900, 1615, 1160, 1675),
+        OCRTextLine("金信稳健策略灵活配置", 297, 1649, 70, 1615, 520, 1675),
+        OCRTextLine("混合A", 131, 1704, 70, 1675, 200, 1735),
+        OCRTextLine("+174.50%", 1051, 1710, 930, 1680, 1160, 1740),
+        OCRTextLine("+2,176.01", 719, 1711, 620, 1680, 830, 1740),
+        OCRTextLine("华夏基金财富号>", 266, 2055, 70, 2020, 460, 2090),
+        OCRTextLine("88,639.80", 709, 2202, 620, 2170, 820, 2230),
+        OCRTextLine("+47,415.55", 1027, 2201, 900, 2170, 1160, 2230),
+        OCRTextLine("华夏创业板成长ETF联", 288, 2202, 70, 2170, 520, 2230),
+        OCRTextLine("接A", 110, 2257, 70, 2230, 160, 2290),
+        OCRTextLine("+115.02%", 1051, 2263, 930, 2230, 1160, 2295),
+        OCRTextLine("+3,294.24", 721, 2265, 620, 2230, 830, 2295),
+        OCRTextLine("金选指数基金", 205, 2313, 70, 2285, 330, 2340),
+        OCRTextLine("定投", 391, 2313, 350, 2285, 430, 2340),
+    ]
+
+    layout_rows = _extract_layout_holding_rows(lines, source_platform="alipay")
+    rows = service._resolve_layout_candidates(layout_rows, source_platform="alipay")
+
+    assert [row["code"] for row in rows] == ["014320", "002112", "007872", "007474"]
+    assert rows[0]["market_value"] == 36881.55
+    assert rows[0]["pnl_amount"] == 26165.63
+    assert rows[0]["pnl_pct"] == 244.18
+    assert rows[0]["field_confidence"]["code"] == "medium"
+    assert rows[0]["field_confidence"]["market_value"] == "high"
+    assert rows[3]["name"] == "华夏创业板成长ETF联接A"
+    assert "金选" not in rows[3]["name"]
 
 
 def test_preview_import_from_text_does_not_persist_snapshot() -> None:
@@ -177,6 +254,7 @@ def test_preview_import_from_text_does_not_persist_snapshot() -> None:
     assert preview["source_platform"] == "jd_finance"
     assert preview["candidate_count"] == 1
     assert holdings["items"] == []
+    assert holdings["portfolio_summary"]["status"] == "empty"
 
 
 def test_xueqiu_name_only_snapshot_resolves_rows_from_list_layout() -> None:
@@ -296,6 +374,68 @@ def test_confirm_import_writes_canonical_snapshot_and_analysis_pool_entry() -> N
     assert any(item["code"] == "021528" for item in pool["items"])
 
 
+def test_confirm_import_reports_replace_change_summary() -> None:
+    service = _service()
+    service.confirm_import(
+        source_platform="alipay",
+        holdings=[
+            {
+                "code": "021528",
+                "name": "财通成长优选混合C",
+                "market_value": 1000.0,
+                "units": 100.0,
+                "cost_amount": 900.0,
+                "pnl_amount": 100.0,
+                "pnl_pct": 11.11,
+                "latest_nav": 10.0,
+                "as_of_date": "2026-06-24",
+            },
+            {
+                "code": "110022",
+                "name": "易方达消费行业股票",
+                "market_value": 2000.0,
+                "units": 200.0,
+                "cost_amount": 1800.0,
+                "pnl_amount": 200.0,
+                "pnl_pct": 11.11,
+                "latest_nav": 10.0,
+                "as_of_date": "2026-06-24",
+            },
+        ],
+    )
+
+    result = service.confirm_import(
+        source_platform="alipay",
+        holdings=[
+            {
+                "code": "021528",
+                "name": "财通成长优选混合C",
+                "market_value": 1300.0,
+                "units": 100.0,
+                "cost_amount": 900.0,
+                "pnl_amount": 400.0,
+                "pnl_pct": 44.44,
+                "latest_nav": 13.0,
+                "as_of_date": "2026-06-25",
+            }
+        ],
+    )
+    summary = result["change_summary"]
+    holdings = service.list_holdings()
+
+    assert summary["mode"] == "replace"
+    assert summary["new_count"] == 0
+    assert summary["updated_count"] == 1
+    assert summary["removed_count"] == 1
+    assert summary["removed_codes"] == ["110022"]
+    assert summary["updated"][0]["code"] == "021528"
+    assert "market_value" in summary["updated"][0]["fields"]
+    assert "pnl_amount" in summary["updated"][0]["fields"]
+    assert holdings["total"] == 1
+    assert holdings["items"][0]["code"] == "021528"
+    assert holdings["items"][0]["market_value"] == 1300.0
+
+
 def test_same_fund_can_remain_separate_by_platform_but_aggregate_globally() -> None:
     service = _service()
     service.confirm_import(
@@ -343,6 +483,68 @@ def test_same_fund_can_remain_separate_by_platform_but_aggregate_globally() -> N
     assert aggregate["latest_nav"] == 12.5
     assert aggregate["as_of_date"] == "2026-06-25"
     assert len(aggregate["source_breakdown"]) == 2
+
+
+def test_list_holdings_returns_portfolio_concentration_summary() -> None:
+    service = _service()
+    service.confirm_import(
+        source_platform="alipay",
+        holdings=[
+            {
+                "code": "021528",
+                "name": "财通成长优选混合C",
+                "market_value": 30000.0,
+                "units": 3000.0,
+                "cost_amount": 24000.0,
+                "pnl_amount": 6000.0,
+            },
+            {
+                "code": "110022",
+                "name": "易方达消费行业股票",
+                "market_value": 5000.0,
+                "units": 500.0,
+                "cost_amount": 5200.0,
+                "pnl_amount": -200.0,
+            },
+        ],
+    )
+    service.confirm_import(
+        source_platform="jd_finance",
+        holdings=[
+            {
+                "code": "501018",
+                "name": "南方原油A",
+                "market_value": 5000.0,
+                "cost_amount": 4800.0,
+                "pnl_amount": 200.0,
+            }
+        ],
+    )
+
+    holdings = service.list_holdings()
+    summary = holdings["portfolio_summary"]
+    concentration = summary["concentration"]
+
+    assert summary["status"] == "completed"
+    assert summary["holding_count"] == 3
+    assert summary["product_count"] == 3
+    assert summary["platform_count"] == 2
+    assert summary["total_market_value"] == 40000.0
+    assert summary["total_cost_amount"] == 34000.0
+    assert summary["total_pnl_amount"] == 6000.0
+    assert summary["pnl_pct"] == 17.65
+    assert summary["amount_privacy_sensitive"] is True
+    assert concentration["status"] == "high"
+    assert concentration["top_weight_pct"] == 75.0
+    assert concentration["top3_weight_pct"] == 100.0
+    assert concentration["top_positions"][0]["code"] == "021528"
+    assert concentration["top_positions"][0]["weight_pct"] == 75.0
+    assert "single_position_extreme" in summary["risk_flags"]
+    assert "top3_concentration_extreme" in summary["risk_flags"]
+    assert summary["by_platform"][0]["key"] == "alipay"
+    assert summary["by_platform"][0]["weight_pct"] == 87.5
+    assert summary["data_quality"]["market_value_coverage_pct"] == 100.0
+    assert summary["data_quality"]["units_coverage_pct"] == 66.67
 
 
 if __name__ == "__main__":

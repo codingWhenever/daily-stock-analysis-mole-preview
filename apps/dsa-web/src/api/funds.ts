@@ -55,6 +55,12 @@ export type FundLedger = {
   riskTarget?: string | null;
   investmentHorizon?: string | null;
   rebalanceFrequency?: string | null;
+  drawdownTolerance?: string | null;
+  liquidityNeed?: string | null;
+  investmentExperience?: string | null;
+  monthlyBudget?: number | null;
+  cashReserveMonths?: number | null;
+  preferredFundTypes?: string | null;
   notes?: string | null;
   active: boolean;
   fundCount: number;
@@ -68,6 +74,12 @@ export type FundLedgerProfilePayload = {
   riskTarget?: string | null;
   investmentHorizon?: string | null;
   rebalanceFrequency?: string | null;
+  drawdownTolerance?: string | null;
+  liquidityNeed?: string | null;
+  investmentExperience?: string | null;
+  monthlyBudget?: number | null;
+  cashReserveMonths?: number | null;
+  preferredFundTypes?: string | null;
   notes?: string | null;
 };
 
@@ -113,6 +125,7 @@ export type FundMarketRankingItem = {
   code: string;
   name?: string | null;
   fundType?: string | null;
+  industry?: string | null;
   market?: string | null;
   score?: number | null;
   status: string;
@@ -283,6 +296,7 @@ export type FundHoldingCandidate = {
   latestNav?: number | null;
   asOfDate?: string | null;
   confidence: string;
+  fieldConfidence: Record<string, string>;
   sourcePlatform: string;
   sourceChannel: string;
   rawIndex?: number | null;
@@ -327,7 +341,39 @@ export type FundHoldingConfirmResponse = {
   ledger: FundLedger;
   confirmedCount: number;
   skipped: Array<Record<string, string>>;
+  changeSummary: Record<string, unknown>;
   items: FundHoldingSnapshot[];
+  limitations: string[];
+};
+
+export type FundHoldingPortfolioBucket = {
+  key?: string | null;
+  label?: string | null;
+  ledgerId?: number | null;
+  holdingCount?: number;
+  productCount?: number;
+  marketValue?: number | null;
+  weightPct?: number | null;
+  missingMarketValueCount?: number;
+};
+
+export type FundHoldingPortfolioSummary = {
+  status: string;
+  scope: Record<string, unknown>;
+  holdingCount: number;
+  productCount: number;
+  platformCount: number;
+  ledgerCount: number;
+  totalMarketValue?: number | null;
+  totalCostAmount?: number | null;
+  totalPnlAmount?: number | null;
+  pnlPct?: number | null;
+  amountPrivacySensitive: boolean;
+  concentration: Record<string, unknown>;
+  byPlatform: FundHoldingPortfolioBucket[];
+  byLedger: FundHoldingPortfolioBucket[];
+  dataQuality: Record<string, unknown>;
+  riskFlags: string[];
   limitations: string[];
 };
 
@@ -336,6 +382,7 @@ export type FundHoldingListResponse = {
   status: string;
   items: FundHoldingSnapshot[];
   aggregatedByCode: Array<Record<string, unknown>>;
+  portfolioSummary?: FundHoldingPortfolioSummary;
   total: number;
   ledgerId?: number | null;
   limitations: string[];
@@ -404,6 +451,12 @@ export const fundsApi = {
       risk_target: payload.riskTarget,
       investment_horizon: payload.investmentHorizon,
       rebalance_frequency: payload.rebalanceFrequency,
+      drawdown_tolerance: payload.drawdownTolerance,
+      liquidity_need: payload.liquidityNeed,
+      investment_experience: payload.investmentExperience,
+      monthly_budget: payload.monthlyBudget,
+      cash_reserve_months: payload.cashReserveMonths,
+      preferred_fund_types: payload.preferredFundTypes,
       notes: payload.notes,
     });
     return toCamelCase<FundLedger>(response.data);
@@ -501,6 +554,7 @@ export const fundsApi = {
         latest_nav: item.latestNav,
         as_of_date: item.asOfDate,
         confidence: item.confidence,
+        field_confidence: item.fieldConfidence || {},
         source_platform: item.sourcePlatform,
         source_channel: item.sourceChannel,
         warnings: item.warnings,

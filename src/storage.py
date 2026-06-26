@@ -214,6 +214,12 @@ class FundLedger(Base):
     risk_target = Column(String(40))
     investment_horizon = Column(String(40))
     rebalance_frequency = Column(String(40))
+    drawdown_tolerance = Column(String(40))
+    liquidity_need = Column(String(40))
+    investment_experience = Column(String(40))
+    monthly_budget = Column(Float)
+    cash_reserve_months = Column(Float)
+    preferred_fund_types = Column(String(160))
     notes = Column(Text)
     active = Column(Boolean, default=True, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.now, index=True)
@@ -231,6 +237,12 @@ class FundLedger(Base):
             'risk_target': self.risk_target,
             'investment_horizon': self.investment_horizon,
             'rebalance_frequency': self.rebalance_frequency,
+            'drawdown_tolerance': self.drawdown_tolerance,
+            'liquidity_need': self.liquidity_need,
+            'investment_experience': self.investment_experience,
+            'monthly_budget': self.monthly_budget,
+            'cash_reserve_months': self.cash_reserve_months,
+            'preferred_fund_types': self.preferred_fund_types,
             'notes': self.notes,
             'active': self.active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -1462,6 +1474,12 @@ class DatabaseManager(metaclass=_DatabaseManagerMeta):
             "risk_target": "VARCHAR(40)",
             "investment_horizon": "VARCHAR(40)",
             "rebalance_frequency": "VARCHAR(40)",
+            "drawdown_tolerance": "VARCHAR(40)",
+            "liquidity_need": "VARCHAR(40)",
+            "investment_experience": "VARCHAR(40)",
+            "monthly_budget": "FLOAT",
+            "cash_reserve_months": "FLOAT",
+            "preferred_fund_types": "VARCHAR(160)",
             "notes": "TEXT",
         }
         for column, column_type in columns.items():

@@ -74,6 +74,7 @@ def test_today_recommendations_are_market_only_and_not_personal_actions() -> Non
     assert candidate["personal_action"] is None
     assert candidate["personalized"] is False
     assert candidate["market_evidence"]
+    assert any(rank_type in candidate["source_rank_types"] for rank_type in {"industry_product_top10", "public_buy_proxy_rank"})
     assert candidate["backtest_readiness"]["status"] in {"ready_for_research", "insufficient_nav_history"}
     assert "buy" not in result["personalization"]["allowed_actions"]
 

@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [改进] Web 选基已确认持仓视图补充收益率、成本单价、份额和最新净值，便于后续个人决策层直接读取完整持仓快照。
 - [改进] Web 选基已确认持仓数值展示去掉金额/净值单位后缀，并移除参考日主展示，降低持仓区信息噪音。
 - [修复] Web 选基持仓导入增强雪球无代码列表截图的名称反查，兼容人民币/QDII、简称省略、回报/混合和 A/Y 份额类别差异，避免相似份额类别错配。
+- [改进] Web 选基持仓导入确认时返回新增、更新、移除和关键字段变化摘要，避免再次导入覆盖当前快照时完全静默。
+- [改进] Web 选基持仓导入新增字段级置信度，并补支付宝持仓列表截图专项解析，真实样例可识别 4 条候选。
+- [新增] 持仓快照接口新增组合级市值、盈亏、集中度、平台/账本分布和字段覆盖率摘要，/funds 默认闭眼展示。
+- [新增] 基金账本画像问卷扩展最大回撤、流动性、投资经验、月度预算、现金安全垫和偏好类型，并进入个人动作金额约束。
+- [新增] 市场公开榜单派生行业热度 Top10、行业内产品 Top10、公开买入代理榜和卖出压力榜，继续明确真实申赎/买卖笔数不可公开核验。
+- [改进] /funds 个人动作默认只展开 6 条摘要，并将同类比较改为超宽屏并排，减少页面过长和窄列挤压。
 - [改进] 通知报告的分析结果摘要不再展开 AI 决策信号明细，完整信号保留在个股详情和单股报告中。
 - [新功能] #1595 P1.5 新增 Provider Cache Capability Registry，按 provider、api surface、gateway 和 verification status 建模 prompt cache 能力，未知 OpenAI-compatible route 默认 telemetry only。
 - [改进] #1595 P1 新增 prompt cache telemetry / analysis-path hints / diagnostics 最小配置，默认不改变 provider 请求 shape，并复用 LLM usage HMAC secret 做 domain-separated cache hint 派生。

@@ -27,9 +27,17 @@ FUND_LEDGER_PROFILE_LIMITS = {
     "risk_target": 40,
     "investment_horizon": 40,
     "rebalance_frequency": 40,
+    "drawdown_tolerance": 40,
+    "liquidity_need": 40,
+    "investment_experience": 40,
+    "preferred_fund_types": 160,
     "notes": 500,
 }
-FUND_LEDGER_PROFILE_FIELDS = tuple(FUND_LEDGER_PROFILE_LIMITS.keys())
+FUND_LEDGER_NUMERIC_PROFILE_FIELDS = {
+    "monthly_budget": (0.0, 10000000.0),
+    "cash_reserve_months": (0.0, 120.0),
+}
+FUND_LEDGER_PROFILE_FIELDS = tuple(FUND_LEDGER_PROFILE_LIMITS.keys()) + tuple(FUND_LEDGER_NUMERIC_PROFILE_FIELDS.keys())
 
 
 def _normalize_optional_text(value: Optional[str], *, field: str, max_length: int) -> Optional[str]:
@@ -41,6 +49,22 @@ def _normalize_optional_text(value: Optional[str], *, field: str, max_length: in
     if len(text) > max_length:
         raise ValueError(f"{field} 不能超过 {max_length} 个字符")
     return text
+
+
+def _normalize_optional_float(value: Any, *, field: str, min_value: float, max_value: float) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} 应为数字") from exc
+    if parsed != parsed:
+        return None
+    if parsed < min_value or parsed > max_value:
+        raise ValueError(f"{field} 应在 {min_value:g}-{max_value:g} 之间")
+    return round(parsed, 2)
 
 
 class FundRepository:
@@ -130,6 +154,12 @@ class FundRepository:
         risk_target: Optional[str] = None,
         investment_horizon: Optional[str] = None,
         rebalance_frequency: Optional[str] = None,
+        drawdown_tolerance: Optional[str] = None,
+        liquidity_need: Optional[str] = None,
+        investment_experience: Optional[str] = None,
+        monthly_budget: Optional[float] = None,
+        cash_reserve_months: Optional[float] = None,
+        preferred_fund_types: Optional[str] = None,
         notes: Optional[str] = None,
     ) -> FundLedger:
         name = (name or "").strip()
@@ -147,6 +177,12 @@ class FundRepository:
                 "risk_target": risk_target,
                 "investment_horizon": investment_horizon,
                 "rebalance_frequency": rebalance_frequency,
+                "drawdown_tolerance": drawdown_tolerance,
+                "liquidity_need": liquidity_need,
+                "investment_experience": investment_experience,
+                "monthly_budget": monthly_budget,
+                "cash_reserve_months": cash_reserve_months,
+                "preferred_fund_types": preferred_fund_types,
                 "notes": notes,
             }
         )
@@ -226,16 +262,23 @@ class FundRepository:
         with self.db.get_session() as session:
             return session.execute(select(FundLedger).where(FundLedger.id == updated_id)).scalar_one()
 
-    def _normalize_profile_updates(self, updates: Dict[str, Any]) -> Dict[str, Optional[str]]:
-        normalized: Dict[str, Optional[str]] = {}
+    def _normalize_profile_updates(self, updates: Dict[str, Any]) -> Dict[str, Any]:
+        normalized: Dict[str, Any] = {}
         for field, value in updates.items():
-            if field not in FUND_LEDGER_PROFILE_LIMITS:
-                continue
-            normalized[field] = _normalize_optional_text(
-                value,
-                field=field,
-                max_length=FUND_LEDGER_PROFILE_LIMITS[field],
-            )
+            if field in FUND_LEDGER_PROFILE_LIMITS:
+                normalized[field] = _normalize_optional_text(
+                    value,
+                    field=field,
+                    max_length=FUND_LEDGER_PROFILE_LIMITS[field],
+                )
+            elif field in FUND_LEDGER_NUMERIC_PROFILE_FIELDS:
+                min_value, max_value = FUND_LEDGER_NUMERIC_PROFILE_FIELDS[field]
+                normalized[field] = _normalize_optional_float(
+                    value,
+                    field=field,
+                    min_value=min_value,
+                    max_value=max_value,
+                )
         return normalized
 
     def list_pool(self, active_only: bool = True) -> List[FundPoolItem]:

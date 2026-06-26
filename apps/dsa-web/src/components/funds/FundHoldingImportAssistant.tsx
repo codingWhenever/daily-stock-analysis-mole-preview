@@ -7,6 +7,7 @@ import {
   type FundHoldingConfirmResponse,
   type FundHoldingImportPreviewResponse,
   type FundHoldingListResponse,
+  type FundHoldingPortfolioBucket,
   type FundHoldingSnapshot,
 } from '../../api/funds';
 import { getParsedApiError, type ParsedApiError } from '../../api/error';
@@ -23,6 +24,33 @@ const SOURCE_OPTIONS = [
 const SOURCE_LABELS = Object.fromEntries(SOURCE_OPTIONS.map((item) => [item.value, item.label]));
 
 type NumberField = 'marketValue' | 'units' | 'costAmount' | 'pnlAmount' | 'pnlPct' | 'latestNav';
+
+const FIELD_CONFIDENCE_LABELS: Record<string, string> = {
+  code: '代码',
+  name: '名称',
+  marketValue: '市值',
+  market_value: '市值',
+  units: '份额',
+  costAmount: '成本',
+  cost_amount: '成本',
+  pnlAmount: '收益',
+  pnl_amount: '收益',
+  pnlPct: '收益率',
+  pnl_pct: '收益率',
+  latestNav: '净值',
+  latest_nav: '净值',
+  asOfDate: '日期',
+  as_of_date: '日期',
+};
+
+const PORTFOLIO_RISK_FLAG_LABELS: Record<string, string> = {
+  single_position_extreme: '单只极高',
+  single_position_high: '单只偏高',
+  top3_concentration_extreme: '前三极高',
+  top3_concentration_high: '前三偏高',
+  market_value_missing: '市值缺失',
+  product_count_low: '产品偏少',
+};
 
 function parseNumber(value: string): number | null {
   const trimmed = value.trim().replace(/,/g, '');
@@ -88,6 +116,39 @@ function recordNumber(record: Record<string, unknown>, key: string): number | nu
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function concentrationStatusLabel(value: string | null | undefined): string {
+  if (value === 'high') return '集中度高';
+  if (value === 'watch') return '需观察';
+  if (value === 'ok') return '分散正常';
+  if (value === 'empty') return '暂无持仓';
+  return '待补数据';
+}
+
+function riskFlagLabel(value: string): string {
+  return PORTFOLIO_RISK_FLAG_LABELS[value] || value;
+}
+
+function holdingChangeSummaryText(result: FundHoldingConfirmResponse): string {
+  const summary = result.changeSummary || {};
+  const newCount = recordNumber(summary, 'newCount') ?? 0;
+  const updatedCount = recordNumber(summary, 'updatedCount') ?? 0;
+  const removedCount = recordNumber(summary, 'removedCount') ?? 0;
+  const parts = [
+    newCount ? `新增 ${newCount}` : null,
+    updatedCount ? `更新 ${updatedCount}` : null,
+    removedCount ? `移除 ${removedCount}` : null,
+  ].filter(Boolean);
+  return parts.length ? `；${parts.join(' / ')}` : '；无关键变化';
+}
+
+function fieldConfidenceItems(item: FundHoldingCandidate): Array<[string, string]> {
+  const confidence = item.fieldConfidence || {};
+  return Object.entries(confidence)
+    .filter(([, value]) => Boolean(value))
+    .slice(0, 8)
+    .map(([field, value]) => [FIELD_CONFIDENCE_LABELS[field] || field, value]);
+}
+
 function sourceLabel(value: string | null | undefined): string {
   if (!value) return '未知来源';
   return SOURCE_LABELS[value] || value;
@@ -133,6 +194,16 @@ export const FundHoldingImportAssistant: React.FC<{
     : '正在从粘贴文本中提取可确认的持仓候选。';
   const confirmedHoldings = holdingsSnapshot?.items || [];
   const aggregatedHoldings = holdingsSnapshot?.aggregatedByCode || [];
+  const portfolioSummary = holdingsSnapshot?.portfolioSummary || null;
+  const portfolioConcentration = portfolioSummary?.concentration || {};
+  const portfolioDataQuality = portfolioSummary?.dataQuality || {};
+  const portfolioRiskFlags = portfolioSummary?.riskFlags || [];
+  const portfolioPlatformBuckets = portfolioSummary?.byPlatform || [];
+  const concentrationStatus = recordText(portfolioConcentration, 'status');
+  const topWeightPct = recordNumber(portfolioConcentration, 'topWeightPct');
+  const top3WeightPct = recordNumber(portfolioConcentration, 'top3WeightPct');
+  const marketValueCoveragePct = recordNumber(portfolioDataQuality, 'marketValueCoveragePct');
+  const unitsCoveragePct = recordNumber(portfolioDataQuality, 'unitsCoveragePct');
   const canPreview = Boolean(ocrText.trim() || files.length);
   const canConfirm = candidates.length > 0 && candidates.every((item) => /^\d{6}$/.test(item.code));
 
@@ -457,6 +528,19 @@ export const FundHoldingImportAssistant: React.FC<{
                         <Badge key={warning} variant="warning">{warning}</Badge>
                       ))}
                     </div>
+                    {fieldConfidenceItems(item).length ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-text">
+                        <span>字段置信度</span>
+                        {fieldConfidenceItems(item).map(([field, confidence]) => (
+                          <Badge
+                            key={`${field}-${confidence}`}
+                            variant={confidence === 'high' ? 'success' : confidence === 'medium' ? 'info' : 'warning'}
+                          >
+                            {field} {confidence}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -474,7 +558,7 @@ export const FundHoldingImportAssistant: React.FC<{
           className="mt-3"
           variant="success"
           title={`${latestConfirm.sourcePlatformLabel} 已导入`}
-          message={`写入 ${latestConfirm.confirmedCount} 条确认持仓，默认进入 ${latestConfirm.ledger.name}。`}
+          message={`写入 ${latestConfirm.confirmedCount} 条确认持仓，默认进入 ${latestConfirm.ledger.name}${holdingChangeSummaryText(latestConfirm)}。`}
         />
       ) : null}
 
@@ -508,6 +592,70 @@ export const FundHoldingImportAssistant: React.FC<{
           </div>
         ) : confirmedHoldings.length ? (
           <div className="p-3">
+            {portfolioSummary ? (
+              <div className="mb-3 grid gap-3 xl:grid-cols-[minmax(0,1.08fr)_minmax(280px,0.92fr)]">
+                <div className="rounded-xl border border-subtle bg-surface-2/55 px-3 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={concentrationStatus === 'high' ? 'warning' : 'info'}>{concentrationStatusLabel(concentrationStatus)}</Badge>
+                    {portfolioRiskFlags.slice(0, 4).map((flag) => (
+                      <Badge key={flag} variant={flag.includes('extreme') || flag.includes('high') ? 'warning' : 'default'}>
+                        {riskFlagLabel(flag)}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
+                    <div>
+                      <p className="text-muted-text">组合市值</p>
+                      <p className="mt-1 text-base font-semibold text-foreground">
+                        {displayExactAmount(portfolioSummary.totalMarketValue, amountsVisible)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-text">组合盈亏</p>
+                      <p className={`mt-1 text-base font-semibold ${portfolioSummary.totalPnlAmount !== null && portfolioSummary.totalPnlAmount !== undefined && portfolioSummary.totalPnlAmount < 0 ? 'text-danger' : 'text-success'}`}>
+                        {displayExactAmount(portfolioSummary.totalPnlAmount, amountsVisible)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-text">单只最高</p>
+                      <p className="mt-1 text-base font-semibold text-foreground">{displayPercent(topWeightPct, amountsVisible)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-text">前三合计</p>
+                      <p className="mt-1 text-base font-semibold text-foreground">{displayPercent(top3WeightPct, amountsVisible)}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-secondary-text">
+                    <span>{portfolioSummary.holdingCount} 条明细</span>
+                    <span>{portfolioSummary.productCount} 只产品</span>
+                    <span>市值覆盖 {numberText(marketValueCoveragePct, 2) || '--'}%</span>
+                    <span>份额覆盖 {numberText(unitsCoveragePct, 2) || '--'}%</span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-subtle bg-background/70 px-3 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-foreground">平台分布</p>
+                    <span className="text-xs text-muted-text">{portfolioSummary.platformCount} 个来源</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {portfolioPlatformBuckets.slice(0, 4).map((bucket: FundHoldingPortfolioBucket) => {
+                      const weight = bucket.weightPct ?? null;
+                      return (
+                        <div key={bucket.key || bucket.label || 'platform'} className="grid grid-cols-[minmax(0,1fr)_84px_70px] items-center gap-2 text-xs">
+                          <span className="truncate text-secondary-text">{bucket.label || bucket.key || '未知平台'}</span>
+                          <span className="text-right font-semibold text-foreground">
+                            {displayExactAmount(bucket.marketValue, amountsVisible)}
+                          </span>
+                          <span className="text-right text-muted-text">{displayPercent(weight, amountsVisible)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
               {aggregatedHoldings.slice(0, 8).map((item) => {
                 const code = recordText(item, 'code');

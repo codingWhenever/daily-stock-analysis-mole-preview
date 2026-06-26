@@ -121,6 +121,10 @@ const MARKET_RANK_TYPE_LABELS: Record<string, string> = {
   etf_net_outflow: 'ETF 流出',
   etf_turnover_heat: 'ETF 热度',
   open_fund_return_rank: '收益实证',
+  industry_heat_top10: '行业 Top10',
+  industry_product_top10: '行业产品',
+  public_buy_proxy_rank: '买入代理',
+  public_sell_proxy_rank: '卖出压力',
 };
 
 const MARKET_ROLE_LABELS: Record<string, string> = {
@@ -128,6 +132,8 @@ const MARKET_ROLE_LABELS: Record<string, string> = {
   market_sell_risk_evidence: '卖出压力',
   market_liquidity_evidence: '流动性',
   market_return_evidence: '收益实证',
+  market_industry_evidence: '行业热度',
+  market_industry_product_evidence: '行业产品',
 };
 
 const MARKET_STATUS_LABELS: Record<string, string> = {
@@ -193,12 +199,43 @@ const LEDGER_REBALANCE_OPTIONS = [
   { value: 'ad_hoc', label: '触发条件' },
 ];
 
+const LEDGER_DRAWDOWN_OPTIONS = [
+  { value: '', label: '未设置' },
+  { value: 'lt_5', label: '5% 以内' },
+  { value: '5_10', label: '5%-10%' },
+  { value: '10_20', label: '10%-20%' },
+  { value: '20_30', label: '20%-30%' },
+  { value: '30_plus', label: '30% 以上' },
+];
+
+const LEDGER_LIQUIDITY_OPTIONS = [
+  { value: '', label: '未设置' },
+  { value: 'anytime', label: '随时可能用钱' },
+  { value: 'within_3m', label: '3 个月内可能用' },
+  { value: 'within_1y', label: '1 年内可等待' },
+  { value: 'long_term', label: '长期不用' },
+];
+
+const LEDGER_EXPERIENCE_OPTIONS = [
+  { value: '', label: '未设置' },
+  { value: 'beginner', label: '新手' },
+  { value: 'familiar', label: '熟悉基金' },
+  { value: 'experienced', label: '有周期经验' },
+  { value: 'professional', label: '专业/高频复核' },
+];
+
 type FundLedgerProfileDraft = {
   accountType: string;
   purpose: string;
   riskTarget: string;
   investmentHorizon: string;
   rebalanceFrequency: string;
+  drawdownTolerance: string;
+  liquidityNeed: string;
+  investmentExperience: string;
+  monthlyBudget: string;
+  cashReserveMonths: string;
+  preferredFundTypes: string;
   notes: string;
 };
 
@@ -208,6 +245,12 @@ const EMPTY_LEDGER_PROFILE_DRAFT: FundLedgerProfileDraft = {
   riskTarget: '',
   investmentHorizon: '',
   rebalanceFrequency: '',
+  drawdownTolerance: '',
+  liquidityNeed: '',
+  investmentExperience: '',
+  monthlyBudget: '',
+  cashReserveMonths: '',
+  preferredFundTypes: '',
   notes: '',
 };
 
@@ -219,6 +262,13 @@ function readNumber(obj: unknown, keys: string[]): number | null {
     if (typeof value === 'number' && Number.isFinite(value)) return value;
   }
   return null;
+}
+
+function parseOptionalNumberInput(value: string): number | null {
+  const text = value.trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function readRecord(obj: unknown, keys: string[]): Record<string, unknown> {
@@ -1181,14 +1231,25 @@ const MarketRankingRow: React.FC<{ item: FundMarketRankingItem; rankType: string
   const return3m = readNumber(metrics, ['return3mPct', 'return_3m_pct']);
   const return6m = readNumber(metrics, ['return6mPct', 'return_6m_pct']);
   const changePct = readNumber(metrics, ['changePct', 'change_pct', 'dailyGrowthPct', 'daily_growth_pct']);
-  const primaryMetric = rankType === 'etf_net_outflow'
+  const productCount = readNumber(metrics, ['productCount', 'product_count']);
+  const avgReturn3m = readNumber(metrics, ['avgReturn3mPct', 'avg_return_3m_pct']);
+  const industryScore = readNumber(metrics, ['industryScore', 'industry_score']);
+  const primaryMetric = rankType === 'industry_heat_top10'
+    ? { label: '行业热度', value: formatNumber(item.score, 1), className: 'text-foreground' }
+    : rankType === 'industry_product_top10'
+      ? { label: '行业分', value: formatNumber(industryScore ?? item.score, 1), className: 'text-foreground' }
+      : rankType === 'etf_net_outflow' || rankType === 'public_sell_proxy_rank'
     ? { label: '净流出', value: formatLargeAmount(outflow), className: 'text-danger' }
-    : rankType === 'etf_net_inflow'
+    : rankType === 'etf_net_inflow' || rankType === 'public_buy_proxy_rank'
       ? { label: '净流入', value: formatLargeAmount(flow), className: 'text-success' }
       : rankType === 'etf_turnover_heat'
         ? { label: '成交额', value: formatLargeAmount(amount), className: 'text-foreground' }
         : { label: '近3月', value: formatPct(return3m), className: return3m !== null && return3m < 0 ? 'text-danger' : 'text-success' };
-  const secondaryMetric = rankType.startsWith('etf')
+  const secondaryMetric = rankType === 'industry_heat_top10'
+    ? `产品 ${productCount ?? '--'} · 净流入 ${formatLargeAmount(flow)} · 均值3月 ${formatPct(avgReturn3m)}`
+    : rankType === 'industry_product_top10'
+      ? `行业 ${item.industry || readString(metrics, ['industry']) || '--'} · 近3月 ${formatPct(return3m)} · 成交 ${formatLargeAmount(amount)}`
+      : rankType.startsWith('etf') || rankType.startsWith('public_')
     ? `涨跌 ${formatPct(changePct)} · 成交 ${formatLargeAmount(amount)}`
     : `近6月 ${formatPct(return6m)} · 申购 ${readString(metrics, ['purchaseStatus', 'purchase_status']) || '--'}`;
   const role = item.recommendationRole ? MARKET_ROLE_LABELS[item.recommendationRole] || item.recommendationRole : '公开证据';
@@ -1202,6 +1263,7 @@ const MarketRankingRow: React.FC<{ item: FundMarketRankingItem; rankType: string
           <p className="truncate font-semibold text-foreground">{item.name || `基金${item.code}`}</p>
           <Badge variant="info">{item.code}</Badge>
           {item.fundType ? <Badge variant="default">{item.fundType}</Badge> : null}
+          {item.industry ? <Badge variant="default">{item.industry}</Badge> : null}
         </div>
         <p className="mt-1 truncate text-xs text-secondary-text">{secondaryMetric}</p>
       </div>
@@ -1232,13 +1294,15 @@ function recommendationEvidenceText(evidence: Record<string, unknown>): string {
   const amount = readNumber(metrics, ['amount', 'proxyTurnoverAmount', 'proxy_turnover_amount']);
   const return3m = readNumber(metrics, ['return3mPct', 'return_3m_pct']);
   const changePct = readNumber(metrics, ['changePct', 'change_pct', 'dailyGrowthPct', 'daily_growth_pct']);
+  const industry = readString(metrics, ['industry']);
   const label = MARKET_RANK_TYPE_LABELS[rankType] || rankType;
   const prefix = rank ? `${label} #${rank}` : label;
 
-  if (rankType === 'etf_net_inflow') return `${prefix} · 净流入 ${formatLargeAmount(flow)} · 涨跌 ${formatPct(changePct)}`;
-  if (rankType === 'etf_net_outflow') return `${prefix} · 净流出 ${formatLargeAmount(outflow)} · 涨跌 ${formatPct(changePct)}`;
+  if (rankType === 'etf_net_inflow' || rankType === 'public_buy_proxy_rank') return `${prefix} · 净流入 ${formatLargeAmount(flow)} · 涨跌 ${formatPct(changePct)}`;
+  if (rankType === 'etf_net_outflow' || rankType === 'public_sell_proxy_rank') return `${prefix} · 净流出 ${formatLargeAmount(outflow)} · 涨跌 ${formatPct(changePct)}`;
   if (rankType === 'etf_turnover_heat') return `${prefix} · 成交额 ${formatLargeAmount(amount)} · 涨跌 ${formatPct(changePct)}`;
   if (rankType === 'open_fund_return_rank') return `${prefix} · 近3月 ${formatPct(return3m)}`;
+  if (rankType === 'industry_product_top10') return `${prefix} · ${industry || '行业'} · 近3月 ${formatPct(return3m)}`;
   return prefix;
 }
 
@@ -1441,7 +1505,7 @@ const MarketRankingWorkbench: React.FC<{
           <div className="rounded-xl border border-subtle bg-surface-2/55 px-2 py-3 sm:px-3">
             <p className="text-[10px] uppercase tracking-[0.14em] text-secondary-text">榜单组</p>
             <p className="mt-1 text-xl font-semibold text-foreground sm:text-2xl">{groups.length || '--'}</p>
-            <p className="mt-1 hidden text-xs text-secondary-text sm:block">ETF 资金流 / 开放式收益</p>
+            <p className="mt-1 hidden text-xs text-secondary-text sm:block">行业 / 买卖代理 / 收益</p>
           </div>
           <div className="rounded-xl border border-subtle bg-surface-2/55 px-2 py-3 sm:px-3">
             <p className="text-[10px] uppercase tracking-[0.14em] text-secondary-text">候选池</p>
@@ -1669,6 +1733,8 @@ const PersonalActionsPanel: React.FC<{
   const blockerCount = readNumber(summary, ['blockerCount', 'blocker_count']);
   const sizedActionCount = readNumber(summary, ['sizedActionCount', 'sized_action_count']);
   const items = actions?.actions || [];
+  const visibleActionItems = items.slice(0, 6);
+  const hiddenActionCount = Math.max(items.length - visibleActionItems.length, 0);
   const [amountsVisible, setAmountsVisible] = useState(false);
 
   return (
@@ -1734,7 +1800,8 @@ const PersonalActionsPanel: React.FC<{
               正在生成个人动作...
             </div>
           ) : items.length ? (
-            items.slice(0, 8).map((item) => {
+            <>
+            {visibleActionItems.map((item) => {
               const positionContext = item.positionContext || readRecord(item.evidence, ['positionContext', 'position_context']);
               const suggestedTrade = item.suggestedTrade || readRecord(item.evidence, ['suggestedTrade', 'suggested_trade']);
               const scoreBreakdown = item.scoreBreakdown || readRecord(item.evidence, ['scoreBreakdown', 'score_breakdown']);
@@ -1833,7 +1900,13 @@ const PersonalActionsPanel: React.FC<{
                   ) : null}
                 </div>
               );
-            })
+            })}
+            {hiddenActionCount ? (
+              <div className="rounded-2xl border border-dashed border-border/60 bg-card/45 px-3 py-4 text-sm text-secondary-text xl:col-span-2">
+                还有 {hiddenActionCount} 条个人动作未在当前摘要展开，后续可进入筛选/分页视图。
+              </div>
+            ) : null}
+            </>
           ) : (
             <div className="rounded-xl border border-dashed border-border/60 bg-card/50 px-3 py-5 text-sm text-secondary-text">
               {actions?.blockerLabels?.length ? actions.blockerLabels.join('；') : '暂无个人动作。'}
@@ -1889,6 +1962,7 @@ const FundLedgerSwitcher: React.FC<{
     : ledgers.find((ledger) => ledger.id === selectedLedgerId) || null;
   const selectedColor = selectedLedger?.color || LEDGER_THEME_COLORS[0];
   const profileFilledCount = Object.values(profileDraft).filter((value) => value.trim()).length;
+  const profileFieldCount = Object.keys(profileDraft).length;
 
   return (
     <Card
@@ -1991,7 +2065,7 @@ const FundLedgerSwitcher: React.FC<{
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="info">画像问卷</Badge>
-              <Badge variant={profileFilledCount >= 4 ? 'success' : 'default'}>{profileFilledCount}/6</Badge>
+              <Badge variant={profileFilledCount >= 7 ? 'success' : 'default'}>{profileFilledCount}/{profileFieldCount}</Badge>
               {selectedLedger ? <Badge variant="default">{selectedLedger.name}</Badge> : null}
             </div>
             <h3 className="mt-2 text-base font-semibold text-foreground">账本画像</h3>
@@ -2035,6 +2109,50 @@ const FundLedgerSwitcher: React.FC<{
               value={profileDraft.rebalanceFrequency}
               onChange={(value) => onProfileChange('rebalanceFrequency', value)}
               options={LEDGER_REBALANCE_OPTIONS}
+            />
+            <Select
+              label="最大回撤承受"
+              value={profileDraft.drawdownTolerance}
+              onChange={(value) => onProfileChange('drawdownTolerance', value)}
+              options={LEDGER_DRAWDOWN_OPTIONS}
+            />
+            <Select
+              label="流动性需求"
+              value={profileDraft.liquidityNeed}
+              onChange={(value) => onProfileChange('liquidityNeed', value)}
+              options={LEDGER_LIQUIDITY_OPTIONS}
+            />
+            <Select
+              label="投资经验"
+              value={profileDraft.investmentExperience}
+              onChange={(value) => onProfileChange('investmentExperience', value)}
+              options={LEDGER_EXPERIENCE_OPTIONS}
+            />
+            <Input
+              label="月度预算"
+              type="number"
+              min={0}
+              step="100"
+              value={profileDraft.monthlyBudget}
+              onChange={(event) => onProfileChange('monthlyBudget', event.target.value)}
+              placeholder="例如 3000"
+            />
+            <Input
+              label="现金安全垫（月）"
+              type="number"
+              min={0}
+              max={120}
+              step="1"
+              value={profileDraft.cashReserveMonths}
+              onChange={(event) => onProfileChange('cashReserveMonths', event.target.value)}
+              placeholder="例如 6"
+            />
+            <Input
+              label="偏好类型"
+              value={profileDraft.preferredFundTypes}
+              onChange={(event) => onProfileChange('preferredFundTypes', event.target.value)}
+              maxLength={160}
+              placeholder="例如 指数, 科技, 红利"
             />
             <Input
               label="资金用途"
@@ -2459,7 +2577,7 @@ const FundAnalysisPanel: React.FC<{
 
       <FundBacktestPanel result={backtest} isLoading={isBacktesting} onRun={onRunBacktest} />
 
-      <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.15fr)_minmax(460px,0.85fr)]">
         <Card title="基金类建议" subtitle="Fund signal" className="min-w-0">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
@@ -2937,6 +3055,12 @@ const FundsPage: React.FC = () => {
       riskTarget: selectedLedger.riskTarget || '',
       investmentHorizon: selectedLedger.investmentHorizon || '',
       rebalanceFrequency: selectedLedger.rebalanceFrequency || '',
+      drawdownTolerance: selectedLedger.drawdownTolerance || '',
+      liquidityNeed: selectedLedger.liquidityNeed || '',
+      investmentExperience: selectedLedger.investmentExperience || '',
+      monthlyBudget: selectedLedger.monthlyBudget !== null && selectedLedger.monthlyBudget !== undefined ? String(selectedLedger.monthlyBudget) : '',
+      cashReserveMonths: selectedLedger.cashReserveMonths !== null && selectedLedger.cashReserveMonths !== undefined ? String(selectedLedger.cashReserveMonths) : '',
+      preferredFundTypes: selectedLedger.preferredFundTypes || '',
       notes: selectedLedger.notes || '',
     });
   }, [selectedLedger]);
@@ -3127,6 +3251,12 @@ const FundsPage: React.FC = () => {
         riskTarget: ledgerProfileDraft.riskTarget || null,
         investmentHorizon: ledgerProfileDraft.investmentHorizon || null,
         rebalanceFrequency: ledgerProfileDraft.rebalanceFrequency || null,
+        drawdownTolerance: ledgerProfileDraft.drawdownTolerance || null,
+        liquidityNeed: ledgerProfileDraft.liquidityNeed || null,
+        investmentExperience: ledgerProfileDraft.investmentExperience || null,
+        monthlyBudget: parseOptionalNumberInput(ledgerProfileDraft.monthlyBudget),
+        cashReserveMonths: parseOptionalNumberInput(ledgerProfileDraft.cashReserveMonths),
+        preferredFundTypes: ledgerProfileDraft.preferredFundTypes || null,
         notes: ledgerProfileDraft.notes || null,
       });
       await loadPool();

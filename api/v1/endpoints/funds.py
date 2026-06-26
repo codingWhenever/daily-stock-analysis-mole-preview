@@ -116,6 +116,12 @@ def create_fund_ledger(request: FundLedgerCreateRequest) -> FundLedgerResponse:
             risk_target=request.risk_target,
             investment_horizon=request.investment_horizon,
             rebalance_frequency=request.rebalance_frequency,
+            drawdown_tolerance=request.drawdown_tolerance,
+            liquidity_need=request.liquidity_need,
+            investment_experience=request.investment_experience,
+            monthly_budget=request.monthly_budget,
+            cash_reserve_months=request.cash_reserve_months,
+            preferred_fund_types=request.preferred_fund_types,
             notes=request.notes,
         ))
     except ValueError as exc:

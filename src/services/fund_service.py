@@ -16,7 +16,12 @@ import numpy as np
 import pandas as pd
 
 from src.repositories.intelligence_repo import IntelligenceRepository
-from src.repositories.fund_repo import FUND_LEDGER_PROFILE_FIELDS, FUND_LEDGER_PROFILE_LIMITS, FundRepository
+from src.repositories.fund_repo import (
+    FUND_LEDGER_NUMERIC_PROFILE_FIELDS,
+    FUND_LEDGER_PROFILE_FIELDS,
+    FUND_LEDGER_PROFILE_LIMITS,
+    FundRepository,
+)
 from src.storage import FundPoolItem
 
 logger = logging.getLogger(__name__)
@@ -198,14 +203,30 @@ def normalize_fund_ledger_color(color: str) -> str:
     return FUND_LEDGER_THEME_COLORS[0]
 
 
-def normalize_fund_ledger_profile(updates: Dict[str, Any]) -> Dict[str, Optional[str]]:
-    normalized: Dict[str, Optional[str]] = {}
+def normalize_fund_ledger_profile(updates: Dict[str, Any]) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {}
     for field in FUND_LEDGER_PROFILE_FIELDS:
         if field not in updates:
             continue
         value = updates[field]
         if value is None:
             normalized[field] = None
+            continue
+        if field in FUND_LEDGER_NUMERIC_PROFILE_FIELDS:
+            if isinstance(value, str) and not value.strip():
+                normalized[field] = None
+                continue
+            try:
+                parsed = float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{field} 应为数字") from exc
+            min_value, max_value = FUND_LEDGER_NUMERIC_PROFILE_FIELDS[field]
+            if parsed != parsed:
+                normalized[field] = None
+                continue
+            if parsed < min_value or parsed > max_value:
+                raise ValueError(f"{field} 应在 {min_value:g}-{max_value:g} 之间")
+            normalized[field] = round(parsed, 2)
             continue
         text = str(value).strip()
         normalized[field] = text or None

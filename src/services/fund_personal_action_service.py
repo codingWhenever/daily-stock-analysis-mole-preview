@@ -62,6 +62,28 @@ HORIZON_WEIGHT_ADJUSTMENT = {
     "5y_plus": 4.0,
 }
 
+DRAWDOWN_WEIGHT_ADJUSTMENT = {
+    "lt_5": -8.0,
+    "5_10": -5.0,
+    "10_20": 0.0,
+    "20_30": 3.0,
+    "30_plus": 5.0,
+}
+
+LIQUIDITY_WEIGHT_ADJUSTMENT = {
+    "anytime": -8.0,
+    "within_3m": -5.0,
+    "within_1y": -2.0,
+    "long_term": 3.0,
+}
+
+EXPERIENCE_WEIGHT_ADJUSTMENT = {
+    "beginner": -3.0,
+    "familiar": 0.0,
+    "experienced": 2.0,
+    "professional": 3.0,
+}
+
 REBALANCE_DCA_MULTIPLIER = {
     "weekly": 0.55,
     "monthly": 1.0,
@@ -285,7 +307,19 @@ class FundPersonalActionService:
     def _profile_payload(self, ledger: Dict[str, Any]) -> Dict[str, Any]:
         return {
             key: ledger.get(key)
-            for key in ("account_type", "purpose", "risk_target", "investment_horizon", "rebalance_frequency")
+            for key in (
+                "account_type",
+                "purpose",
+                "risk_target",
+                "investment_horizon",
+                "rebalance_frequency",
+                "drawdown_tolerance",
+                "liquidity_need",
+                "investment_experience",
+                "monthly_budget",
+                "cash_reserve_months",
+                "preferred_fund_types",
+            )
             if ledger.get(key)
         }
 
@@ -396,6 +430,12 @@ class FundPersonalActionService:
         target = TARGET_WEIGHT_BY_RISK.get(risk_target, TARGET_WEIGHT_BY_RISK["balanced"])
         target += ACCOUNT_WEIGHT_ADJUSTMENT.get(account_type, 0.0)
         target += HORIZON_WEIGHT_ADJUSTMENT.get(horizon, 0.0)
+        target += DRAWDOWN_WEIGHT_ADJUSTMENT.get(str(profile.get("drawdown_tolerance") or ""), 0.0)
+        target += LIQUIDITY_WEIGHT_ADJUSTMENT.get(str(profile.get("liquidity_need") or ""), 0.0)
+        target += EXPERIENCE_WEIGHT_ADJUSTMENT.get(str(profile.get("investment_experience") or ""), 0.0)
+        cash_reserve_months = _to_float(profile.get("cash_reserve_months"))
+        if cash_reserve_months is not None and cash_reserve_months < 3:
+            target -= 4.0
         return round(_clamp(target, 2.0, 30.0), 2)
 
     def _metrics_profile(self, latest: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -483,7 +523,7 @@ class FundPersonalActionService:
         return {"key": "position", "label": "仓位约束", "score": score, "status": "ok", "reason": f"当前仓位为 {concentration}"}
 
     def _profile_score(self, profile: Dict[str, Any]) -> Dict[str, Any]:
-        required = ["risk_target", "investment_horizon", "rebalance_frequency"]
+        required = ["risk_target", "investment_horizon", "rebalance_frequency", "drawdown_tolerance", "liquidity_need"]
         present = [key for key in required if profile.get(key)]
         score = len(present) / len(required) * 100
         status = "ok" if len(present) == len(required) else "partial" if present else "missing"
@@ -581,6 +621,13 @@ class FundPersonalActionService:
             "requires_cash_confirmation": action in {"increase", "dca"},
             "privacy_sensitive": True,
             "sizing_basis": "confirmed_holding_snapshot",
+            "profile_constraints": {
+                "monthly_budget": _round_money(_to_float(profile.get("monthly_budget"))),
+                "cash_reserve_months": _round_pct(_to_float(profile.get("cash_reserve_months"))),
+                "drawdown_tolerance": profile.get("drawdown_tolerance"),
+                "liquidity_need": profile.get("liquidity_need"),
+                "investment_experience": profile.get("investment_experience"),
+            },
             "reason": None,
         }
         if action in {"refresh_analysis", "complete_profile"}:
@@ -603,6 +650,13 @@ class FundPersonalActionService:
             "growth": 1.1,
             "aggressive": 1.25,
         }.get(str(profile.get("risk_target") or "balanced"), 0.9)
+        if str(profile.get("liquidity_need") or "") in {"anytime", "within_3m"}:
+            risk_multiplier *= 0.75
+        cash_reserve_months = _to_float(profile.get("cash_reserve_months"))
+        if cash_reserve_months is not None and cash_reserve_months < 3:
+            risk_multiplier *= 0.65
+        elif cash_reserve_months is not None and cash_reserve_months >= 12:
+            risk_multiplier *= 1.05
 
         if action in {"increase", "dca"}:
             if target_value is not None and current_value >= target_value:
@@ -621,6 +675,11 @@ class FundPersonalActionService:
             else:
                 amount_min = gap * 0.20 * risk_multiplier * score_multiplier
                 amount_max = gap * 0.45 * risk_multiplier * score_multiplier
+            monthly_budget = _to_float(profile.get("monthly_budget"))
+            if monthly_budget is not None and monthly_budget > 0:
+                budget_cap = monthly_budget if action == "dca" else monthly_budget * 2
+                amount_max = min(amount_max, budget_cap)
+                amount_min = min(amount_min, amount_max)
             base.update(self._amount_payload(amount_min, amount_max, current_value))
             base["status"] = "ready"
             base["reason"] = "根据目标仓位缺口给出分批买入区间，仍需确认可用现金"

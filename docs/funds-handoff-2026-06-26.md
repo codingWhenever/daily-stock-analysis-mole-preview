@@ -11,9 +11,9 @@
 
 ## 一句话交接
 
-当前 `/funds` 已从“基金搜索和基金池展示”推进到“公开数据可解释、数据质量可追踪、费用/类型/回测有结构化底座、基金账本具备轻量画像、可导入用户确认后的持仓快照、可展示市场级榜单/荐基证据和个人动作 v2 预览”的阶段。它还不是完整投资决策系统：资讯佐证实接、账本交互增强、支付宝专项样例、基金E账户校验、完整用户画像、行业 Top10/行业产品 Top10、组合级账户收益和回撤仍未完成。
+当前 `/funds` 已从“基金搜索和基金池展示”推进到“公开数据可解释、数据质量可追踪、费用/类型/回测有结构化底座、基金账本具备扩展画像、可导入用户确认后的持仓快照、可展示组合级持仓摘要、市场级榜单/荐基证据和个人动作 v2 预览”的阶段。它还不是完整投资决策系统：资讯佐证实接、账本交互增强、基金E账户校验、CSV/Excel/交易流水导入、真实平台买入/卖出笔数或金额榜、独立完整适当性问卷、组合级行业/主题暴露和账户历史回撤仍未完成。
 
-接手时要把当前能力理解为“公开基金数据 + 本地基金池/账本 + 用户确认持仓快照 + 市场级公开证据 + 规则化个人动作预览”的阶段，而不是“已经能读取完整平台账户、交易流水、现金余额并自动给出最终投资指令”的阶段。`docs/funds-decision-foundation-spec.md` 中的完整用户画像、行业/主题荐基、真实平台买入/卖出榜、市场风格轮动、资讯佐证和组合级风险仍是下一阶段蓝图，不能写入当前已完成清单。
+接手时要把当前能力理解为“公开基金数据 + 本地基金池/账本 + 用户确认持仓快照 + 组合快照摘要 + 市场级公开证据 + 规则化个人动作预览”的阶段，而不是“已经能读取完整平台账户、交易流水、现金余额并自动给出最终投资指令”的阶段。`docs/funds-decision-foundation-spec.md` 中的完整独立用户画像、真实平台买入/卖出榜、市场风格轮动实接、资讯佐证、组合级行业/主题暴露和账户历史回撤仍是下一阶段蓝图，不能写入当前已完成清单。
 
 ## 当前产品目标
 
@@ -28,9 +28,9 @@
 
 和完整规格的关系：
 
-- 已实现主线：公开基金搜索、基金池、数据质量、类型画像、费用模型、NAV 回测、回测校准、规则信号、轻量账本画像、持仓截图 OCR 预览/确认、已确认持仓快照、金额闭眼模式、市场级公开榜单、荐基证据卡、个人持仓动作 v2 和 `/funds` 工作台第一版。
-- 仍是规划主线：完整用户画像问卷、组合级持仓分析、热点行业 Top10、行业下产品 Top10、真实平台买入/卖出笔数或金额榜、资讯佐证实接、账本交互增强、基金E账户校验、页面工作台持续打磨。
-- 下一轮优先级应先收口当前可信边界，并并行推进回测/数据底座、真实市场上下文和 `/funds` 工作台 UI/UX 设计；资讯佐证、账本交互、持仓导入和用户画像按后续切片推进。
+- 已实现主线：公开基金搜索、基金池、数据质量、类型画像、费用模型、NAV 回测、回测校准、规则信号、扩展账本画像、RapidOCR 持仓截图 OCR 预览/确认、OCR 字段级置信度、支付宝/京东金融/雪球样例解析、已确认持仓快照、组合级持仓摘要、金额闭眼模式、市场级公开榜单、行业热度/行业产品 Top10 代理榜、公开买入/卖出代理榜、荐基证据卡、个人持仓动作 v2 和 `/funds` 工作台第一版收口。
+- 仍是规划主线：独立完整用户画像问卷、组合级行业/主题暴露、真实平台买入/卖出笔数或金额榜、资讯佐证实接、账本交互增强、基金E账户校验、CSV/Excel/交易流水导入、页面工作台持续打磨。
+- 下一轮优先级应先继续做实回测/数据底座和真实市场上下文；资讯佐证、账本交互、基金E账户校验和独立画像问卷按后续切片推进。
 
 ## 运行状态
 
@@ -53,14 +53,14 @@ cd /Users/lee_oh/aiproject/CreativeProducts/daily_stock_analysis
 
 当前 `/funds` 相关功能已经分模块提交。最近关键提交包括：
 
-- `0341df8 feat: enhance funds personal action preview`
-- `4da2444 feat: enhance fund holding snapshot fields`
-- `bd4234d test: cover xueqiu holding OCR rows`
-- `3cc95d9 fix: guard fund share class resolution`
-- `656fa3b fix: simplify fund holding value display`
-- `3990f85 fix: improve xueqiu fund name matching`
+- `275fb1c fix: improve funds page layout`
+- `36e132a feat: add fund market industry rankings`
+- `7e0b208 feat: expand fund ledger profile`
+- `a4ee003 feat: add fund portfolio summary`
+- `66a0d27 feat: add fund holding field confidence`
+- `8445e63 feat: summarize fund holding import changes`
 
-当前工作树只剩未跟踪运行产物：`.superpowers/` 和 `output/`。它们是技能进度/截图证据，不应混入功能提交，除非后续明确要归档验收截图。
+截至本次文档更新，功能代码已按模块提交；本地仍可能保留未跟踪验证产物：`apps/dsa-web/output/` 和 `docs/funds-uiux-review-2026-06-26.md`。它们是截图/评审证据，不应混入功能提交，除非后续明确要归档验收截图或 UI 评审稿。
 
 ## 已完成能力
 
@@ -229,9 +229,9 @@ fund_metric_profile_v1
 - 货币基金在七日年化、万份收益、规模/流动性未接入前保持 `watch`。
 - 类型指标缺口进入 `strategy_readiness.missing_specialized_metrics` 和 `signal_context.metric_profile`，但当前不改写评分阈值。
 
-### 7. 基金账本与轻量账户画像 P2-1
+### 7. 基金账本与扩展账户画像 P2-1
 
-已完成后端第一版。
+已完成后端和 `/funds` 表单第一版。
 
 账本字段：
 
@@ -240,6 +240,12 @@ fund_metric_profile_v1
 - `risk_target`
 - `investment_horizon`
 - `rebalance_frequency`
+- `drawdown_tolerance`
+- `liquidity_need`
+- `investment_experience`
+- `monthly_budget`
+- `cash_reserve_months`
+- `preferred_fund_types`
 - `notes`
 
 主要 API：
@@ -256,6 +262,7 @@ PATCH /api/v1/funds/pool/{code}/ledger
 - 更新账本画像，可选更新 `name` / `color`。
 - `list_pool` 返回 `ledgers`，每个 ledger 带画像字段和 `fund_count`。
 - 基金池条目可手动归属到账本。
+- 个人动作 v2 会读取回撤承受、流动性、投资经验、月度预算、现金安全垫和偏好类型，用于目标仓位和建议金额区间约束。
 - 旧 SQLite 缺 `fund_pool_items.ledger_id` 或 `fund_ledgers` 画像列时会幂等补列。
 - 迁移检查或 `ALTER TABLE` 失败时 fail-fast，不静默带病启动。
 - active/inactive 同名账本都拒绝重复创建或重命名为同名，避免误覆盖旧账本画像。
@@ -263,9 +270,45 @@ PATCH /api/v1/funds/pool/{code}/ledger
 未做：
 
 - 个人平台账号。
-- 持仓份额、成本、买入日期。
-- 账户级收益、回撤、集中度计算。
+- 独立完整适当性问卷和问卷评分。
+- 手工加减持、买入日期、交易流水和现金余额。
+- 账户历史收益率、历史回撤、行业/主题暴露和重仓穿透。
 - 账本删除/归档、排序、批量移动、主题色预设和完整前端交互增强。
+
+### 8. 持仓导入、字段置信度和组合摘要
+
+已完成第一版：
+
+- `/api/v1/funds/holding-imports/preview` 支持截图上传后直接触发 RapidOCR，也保留粘贴 OCR 文本降级路径。
+- `/api/v1/funds/holding-imports/confirm` 只写入用户确认或编辑后的 canonical 当前快照，不长期保存原图和原始 OCR 文本。
+- `FundHoldingCandidate.field_confidence` 已覆盖 `code`、`name`、`market_value`、`units`、`cost_amount`、`pnl_amount`、`pnl_pct`、`latest_nav` 等核心字段。
+- 支持支付宝、京东金融和雪球列表截图专项解析；无基金代码的列表会按基金名称反查代码，并给出中低置信度提示。
+- 持仓收益率校验通过时，可由市值与持仓收益反推成本；截图未展示份额时，可用公开单位净值反推份额和净值字段。
+- 再次确认导入时返回 `change_summary`，包含新增、更新、移除和关键字段变化摘要。
+- `/api/v1/funds/holdings` 返回 `portfolio_summary`，包括总市值、总成本、总盈亏、集中度、前几大持仓、平台/账本分布、字段覆盖率和风险提示。
+- `/funds` 已确认持仓区默认闭眼展示金额/仓位，可手动打开。
+
+重要边界：
+
+- 当前快照不是完整交易流水，不代表真实历史成本或历史收益率。
+- 成本、份额和净值的反推字段会降低字段级置信度，用户确认或编辑后的值才进入 canonical 快照。
+- 组合摘要是当前持仓快照口径，不包含账户历史回撤、现金余额、历史申赎和行业/主题穿透。
+
+### 9. 市场级榜单、行业代理榜和荐基证据
+
+已完成第一版：
+
+- `/api/v1/funds/market-rankings` 返回 `market_fund_ranking_v1`。
+- 已有市场级公开组：ETF 主力净流入、ETF 主力净流出、ETF 成交热度、开放式基金收益实证。
+- 已派生 `industry_heat_top10`、`industry_product_top10`、`public_buy_proxy_rank`、`public_sell_proxy_rank`。
+- `recommendation_candidates` 会引用行业产品 Top10 和公开买入代理榜，进入 `/api/v1/funds/recommendations/today` 的市场级荐基证据卡。
+- `/funds` 页面明确区分市场级榜单/荐基证据和个人持仓动作。
+
+重要边界：
+
+- `public_buy_proxy_rank` 和 `public_sell_proxy_rank` 是公开代理榜，主要基于 ETF 净流入/净流出、成交额、换手、收益等公开字段，不是真实平台买入笔数、卖出笔数、申购金额或赎回金额。
+- 市场级榜单前期完全脱离用户画像和个人持仓，只能作为具体产品推荐的公开证据，不是个人买卖指令。
+- 行业和主题识别当前基于基金名称/类型/公开榜单字段推断，尚未完成基金定期报告持仓穿透和行业暴露精算。
 
 ## 已明确暂缓
 
@@ -303,36 +346,38 @@ PATCH /api/v1/funds/pool/{code}/ledger
 已落地第一版但仍需增强：
 
 - RapidOCR 本地图片 OCR 预览。
-- 京东金融真实截图样例解析。
+- 支付宝、京东金融、雪球真实截图样例解析。
 - 雪球无代码列表截图解析和基金名称反查。
+- OCR 字段级置信度。
 - 用户确认/编辑 OCR 候选后写入当前持仓快照。
+- 再次导入时返回字段差异和新增/更新/移除摘要。
 - 各平台默认账本；全部视图按基金代码聚合，各账本/平台保留独立明细。
+- 组合级当前持仓摘要，包括集中度、平台/账本分布和字段覆盖率。
 - `/funds` 持仓和个人动作金额默认闭眼，可手动打开。
-- 市场级公开榜单和荐基证据卡。
-- 账本画像轻量字段。
+- 市场级公开榜单、行业热度 Top10、行业产品 Top10、公开买入/卖出代理榜和荐基证据卡。
+- 账本画像扩展字段。
 - 个人持仓动作 v2 预览。
-- `/funds` 工作台第一版。
+- `/funds` 工作台第一版和个人动作摘要收口。
 
 仍未落地或未完整验证：
 
-- 支付宝专项截图布局解析和真实样例验证。
 - 基金E账户校验源。
 - CSV / Excel / 账单 / 交易流水导入。
-- 组合层风险暴露、主题集中度、平台分布。
+- 平台账号直连、真实交易流水、现金余额和真实平台费率。
+- 组合层行业/主题暴露、重仓穿透和历史回撤。
+- 账本排序、重命名、删除/归档、批量移动等完整交互。
 
 画像和个人持仓动作：
 
-- 完整用户画像问卷。
-- 根据完整风险等级、回撤预算、投资期限、流动性和偏好限制生成个人持仓动作建议。
-- 将真实仓位、现金安全垫和平台持仓分布作为买入/减仓硬约束。
+- 独立完整用户画像/适当性问卷和评分。
+- 当前扩展账本画像已进入个人动作，但仍需更完整的风险承受能力、财务状况、投资经验和产品适配问卷。
+- 将真实现金余额、真实可用申购预算和平台持仓分布作为买入/减仓硬约束。
 - 接入用户现金余额或可用申购预算。
 - 对个人动作金额区间做回测校准和后验评估。
 
 荐基和市场榜单：
 
-- 今日荐基已具备市场级证据卡 v1，但尚未形成行业/主题维度的完整荐基工作流。
-- 热点行业 Top10。
-- 行业下产品 Top10。
+- 今日荐基已具备市场级证据卡 v1，行业热度 Top10 和行业产品 Top10 已有代理版，但尚未形成基于真实行业配置、估值和风格轮动的完整荐基工作流。
 - 真实平台买入笔数、卖出笔数、申购金额、赎回金额榜。
 - 市场级榜单只汇总公开客观交易、资金流和平台热度数据，不依赖用户画像或个人持仓。
 - 市场级榜单是推荐具体产品的前期数据实证，不等同于个人买入/卖出建议。
@@ -356,7 +401,7 @@ PATCH /api/v1/funds/pool/{code}/ledger
 - 买卖建议必须说明它是规则引擎输出，并带数据质量、回测校准、费用和适用边界。
 - 不要把用户确认后的截图持仓快照说成完整平台账户或真实交易流水。
 - 不要把市场级荐基证据卡说成因人而异的买入/卖出指令。
-- 不要把完整规格里的行业 Top10、真实平台买入/卖出笔数、完整用户画像和资讯佐证说成已完成。
+- 不要把行业/买卖代理榜说成真实行业配置穿透或真实平台买入/卖出笔数；也不要把独立完整用户画像和资讯佐证说成已完成。
 
 ## 当前已实现 API 与规划 API 边界
 
@@ -372,6 +417,12 @@ DELETE /api/v1/funds/pool/{code}
 PATCH  /api/v1/funds/pool/{code}/ledger
 POST   /api/v1/funds/pool/refresh
 GET    /api/v1/funds/calibration/backtests
+GET    /api/v1/funds/market-rankings
+POST   /api/v1/funds/holding-imports/preview
+POST   /api/v1/funds/holding-imports/confirm
+GET    /api/v1/funds/holdings
+GET    /api/v1/funds/recommendations/today
+GET    /api/v1/funds/personal-actions
 POST   /api/v1/funds/{code}/refresh
 GET    /api/v1/funds/{code}/backtest
 GET    /api/v1/funds/{code}/analysis
@@ -384,10 +435,8 @@ GET    /api/v1/funds/{code}/nav
 POST  /api/v1/funds/holding-imports/parse
 POST  /api/v1/funds/holding-imports/commit
 GET   /api/v1/funds/holding-imports/{batch_id}
-GET   /api/v1/funds/holdings
 PATCH /api/v1/funds/holdings/{holding_id}
 POST  /api/v1/funds/investor-profile/evaluate
-GET   /api/v1/funds/recommendations/today
 GET   /api/v1/funds/recommendations/industries
 GET   /api/v1/funds/recommendations/action-rankings
 GET   /api/v1/funds/privacy-preferences
@@ -407,6 +456,13 @@ PATCH /api/v1/funds/privacy-preferences
 | `MARKET_CONTEXT_SCHEMA_VERSION` | `fund_market_context_v1` | 市场上下文结构 |
 | `FUND_BACKTEST_ENGINE_VERSION` | `fund_nav_walk_forward_v1` | 单基金 NAV walk-forward 回测 |
 | `FundBacktestCalibrationResponse.schema_version` | `fund_backtest_calibration_v1` | 回测校准中心响应 |
+| `FundMarketRankingsResponse.schema_version` | `market_fund_ranking_v1` | 市场级公开榜单响应 |
+| `FUND_HOLDING_PREVIEW_SCHEMA_VERSION` | `fund_holding_import_preview_v1` | 持仓导入预览 |
+| `FUND_HOLDING_CONFIRM_SCHEMA_VERSION` | `fund_holding_confirm_v1` | 持仓导入确认 |
+| `FUND_HOLDING_SNAPSHOT_SCHEMA_VERSION` | `fund_holding_snapshot_v1` | 已确认持仓快照 |
+| `FUND_RECOMMENDATION_TODAY_SCHEMA_VERSION` | `fund_recommendation_today_v1` | 今日市场级荐基证据卡 |
+| `FUND_PERSONAL_ACTIONS_SCHEMA_VERSION` | `fund_personal_actions_v2` | 个人持仓动作建议 |
+| `FUND_PERSONAL_ACTION_MODEL_VERSION` | `fund_personal_action_model_v2` | 个人动作评分/金额区间模型 |
 | `signal_context.schema_version` | `fund_signal_context_v3` | 信号上下文结构 |
 | `trading_rules.fee_model.schema_version` | `fund_fee_model_v1` | 交易规则与费用模型 |
 
@@ -414,7 +470,7 @@ PATCH /api/v1/funds/privacy-preferences
 
 ## 验证证据
 
-以下是交接文档记录的最近一轮验证证据；本次文档审查只核对文档与代码契约，没有重新执行完整后端/前端回归。后续如果继续改代码或 UI，需要重新跑对应验证。
+以下是 2026-06-26 最近一轮验证证据；后续如果继续改代码或 UI，需要重新跑对应验证。
 
 最近一轮后端编译验证：
 
@@ -429,6 +485,35 @@ PATCH /api/v1/funds/privacy-preferences
 ```
 
 结果：通过。
+
+本轮持仓导入、个人动作和前端回归还验证了：
+
+```bash
+PYTHONPATH=. .venv/bin/python tests/test_fund_holding_import_service.py
+PYTHONPATH=. .venv/bin/python tests/test_fund_personal_action_service.py
+PYTHONPATH=. .venv/bin/python tests/test_fund_market_ranking_service.py
+PYTHONPATH=. .venv/bin/python tests/test_fund_recommendation_service.py
+PYTHONPATH=. .venv/bin/python -m py_compile \
+  src/services/fund_holding_import_service.py \
+  src/services/fund_market_ranking_service.py \
+  src/services/fund_personal_action_service.py \
+  api/v1/schemas/funds.py \
+  tests/test_fund_holding_import_service.py \
+  tests/test_fund_market_ranking_service.py \
+  tests/test_fund_recommendation_service.py \
+  tests/test_fund_personal_action_service.py
+cd apps/dsa-web && npm run lint
+cd apps/dsa-web && npm run build
+git diff --check
+```
+
+结果：通过。`npm run lint` 仍有既有 warning：`apps/dsa-web/src/pages/SettingsPage.tsx:348` 的 `react-hooks/exhaustive-deps`，本轮未改。
+
+真实截图 OCR 验证：
+
+- 支付宝真实截图 1 张：识别出 `014320`、`002112`、`007872`、`007474`，用于验证支付宝列表专项布局解析。
+- 京东金融真实截图 1 张：识别出 `501018`、`270042`，可补市值、收益、收益率，并通过公开净值反推份额/最新净值。
+- 雪球真实截图 5 张：识别出 29 条候选，`empty_code_count=0`；已验证关键名称反查如 `006327`、`000934`、`519191`、`166019`、`163407`。
 
 当前 `.venv` 没有安装 `pytest`，因此最近一轮不是通过 `pytest` runner，而是使用直接 import 并执行 `tests/test_fund_service.py` 全部 `test_*` 函数的小脚本验证：
 
@@ -465,6 +550,12 @@ GET /api/v1/funds/pool -> 正常返回 items / ledgers
 - `risk_target`
 - `investment_horizon`
 - `rebalance_frequency`
+- `drawdown_tolerance`
+- `liquidity_need`
+- `investment_experience`
+- `monthly_budget`
+- `cash_reserve_months`
+- `preferred_fund_types`
 - `notes`
 - `fund_count`
 
@@ -479,14 +570,15 @@ GET /api/v1/funds/pool -> 正常返回 items / ledgers
 结果：
 
 ```text
-FASTAPI_LEDGER_API_PASS
+PASS: ledger API contract
 ```
 
 未覆盖或需要补充：
 
-- 没有在本次交接审查中重新跑 `pytest`、`npm run lint` 或 `npm run build`。
-- 当前交接没有附 `/funds` 桌面和移动端截图；如果下一轮改页面、金额闭眼、荐基或导入助手 UI，必须补截图验收。
-- 真实持仓导入、用户画像、荐基榜、金额闭眼模式均未实现，因此没有运行时验证证据。
+- 没有运行标准 `pytest` 命令；当前环境按历史边界使用直接执行 `test_*` 文件验证。
+- 基金E账户校验源、CSV/Excel/交易流水导入、独立完整用户画像问卷、真实平台买入/卖出笔数或金额、资讯佐证、组合级行业/主题暴露和历史回撤仍未验证。
+- 行业热度 Top10、行业产品 Top10 和公开买入/卖出榜当前是公开代理口径，已测结构和排序，不等于真实平台交易榜。
+- 如果下一轮继续改页面、金额闭眼、荐基或导入助手 UI，需要补最新 `/funds` 桌面和移动端截图验收。
 
 ## 测试覆盖重点
 
@@ -505,8 +597,25 @@ FASTAPI_LEDGER_API_PASS
 - 重命名撞 active/inactive 同名拒绝。
 - 单基金 backtest。
 - 回测校准中心聚合、过滤、失败样本、样本不足。
+- 扩展账本画像字段的创建、更新、迁移和个人动作约束读取。
 
-当前 `.venv` 没有安装 `pytest`，因此不要把 `TOTAL 32 PASS` 解读为标准 pytest 结果；它代表直接调用测试函数的小脚本通过。
+当前 `tests/test_fund_holding_import_service.py` 覆盖了：
+
+- OCR 文本/图片预览候选。
+- 支付宝、京东金融、雪球样例解析。
+- 字段级置信度。
+- 成本、份额和净值补全/反推。
+- 用户确认写入快照和再次导入差异摘要。
+- `portfolio_summary` 的市值、盈亏、集中度、平台/账本分布和字段覆盖率。
+
+当前 `tests/test_fund_market_ranking_service.py` 和 `tests/test_fund_recommendation_service.py` 覆盖了：
+
+- 市场级公开榜单基础分组。
+- `industry_heat_top10`、`industry_product_top10`、`public_buy_proxy_rank`、`public_sell_proxy_rank`。
+- 榜单代理口径的 status / limitations / proxy fields。
+- 今日荐基候选引用行业产品和公开买入代理证据。
+
+当前验证不要写成标准 `pytest` 全量结果；本轮采用直接执行相关 `test_*` 文件和前端 lint/build 的边界。
 
 ## 下一轮建议优先级
 
@@ -547,16 +656,17 @@ FASTAPI_LEDGER_API_PASS
 - `market_context` 中能清楚区分真实指数/估值/风格数据与代理指标。
 - UI 不再把缺口写成已接入。
 
-### 优先级 3：`/funds` 工作台 UI/UX 设计
+### 优先级 3：`/funds` 工作台 UI/UX 继续打磨
 
-这是下一轮的重要关注点，应与回测和市场上下文并行推进。UI 设计可以先行，但工程落地必须绑定数据和功能契约，避免后续功能补齐时返工。
+第一版工作台已做市场榜单、荐基证据、持仓导入、个人动作和基金池的分区收口，并限制了个人动作默认展开数量。下一轮仍应与回测和市场上下文并行推进，重点是信息架构深化、筛选分页和移动端数据表体验。
 
 建议任务：
 
-- 设计今日决策、我的持仓、荐基、基金池、导入与数据、用户画像的信息架构。
+- 继续打磨今日决策、我的持仓、荐基、基金池、导入与数据、用户画像的信息架构。
 - 明确市场级榜单、推荐候选和个人持仓动作建议的视觉分层。
 - 为每块数据定义 `已实接 / 计算中 / 待接入 / 需用户确认` 状态。
-- 补桌面和移动端截图验收。
+- 为持仓明细和个人动作增加筛选、分页或抽屉详情，避免移动端过长。
+- 每轮 UI 变更补桌面和移动端截图验收。
 - 确保无持仓时不展示个人动作，只展示市场级榜单和推荐候选。
 
 验收：
@@ -588,17 +698,17 @@ FASTAPI_LEDGER_API_PASS
 - 移动端检查按钮挤压和文本溢出。
 - 空账本和默认账本的状态设计。
 
-### 优先级 6：持仓导入和用户画像
+### 优先级 6：持仓导入增强和用户画像
 
-这是完整决策系统的关键，但工程量大，建议在数据底座和回测稳定后开。
+这是完整决策系统的关键。当前已完成持仓截图 OCR/确认/快照 v1、字段级置信度、支付宝/京东金融/雪球样例和组合快照摘要，下一步应围绕校验源、更多样本、差异复核体验和独立画像问卷继续增强，而不是重新设计一套导入链路。
 
 建议任务：
 
-- 先设计基金持仓快照表，不要伪造成股票交易流水。
-- 用户确认后的持仓才进入决策。
-- 金额默认闭眼。
-- OCR/截图导入先做本地 RapidOCR + 人工确认。
-- 用户画像问卷作为硬约束进入信号层。
+- 增加基金E账户作为全量校验源。
+- 增加更多支付宝、京东金融、雪球真实样本回归，覆盖不同字体、长截图和持仓为空场景。
+- 将字段级置信度和再次导入差异摘要做成更明确的复核交互，关键字段冲突时提示用户确认。
+- 完整用户画像/适当性问卷作为硬约束进入个人动作层。
+- 增加 CSV/Excel/交易流水导入时，必须和当前快照语义分开，不写成 OCR 快照。
 
 ## 审查建议
 
@@ -613,8 +723,8 @@ FASTAPI_LEDGER_API_PASS
 
 ## 交接风险
 
-- 当前工作树未提交，后续 agent 不应执行 destructive git 操作。
-- `docs/CHANGELOG.md` 和 `docs/INDEX.md` 已有未提交改动，接手前请确认是否属于同一批基金功能文档变更。
-- 前端 build 已通过，但如果继续改 UI，需要重新做桌面和移动端截图检查。
+- 功能代码已按模块提交；后续 agent 仍不应执行 destructive git 操作，避免丢失本地截图/评审产物。
+- 当前未跟踪 `apps/dsa-web/output/` 和 `docs/funds-uiux-review-2026-06-26.md` 属于本地验证/评审证据，除非明确归档，否则不要混入功能提交。
+- 前端 lint/build 已通过，但如果继续改 UI，需要重新做桌面和移动端截图检查。
 - 当前数据源为公开接口和本地计算混合，不要在文案中写成支付宝同等数据覆盖。
 - 回测校准当前仍是研究/可信度上下文，不是自动交易策略。

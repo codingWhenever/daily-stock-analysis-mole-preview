@@ -23,6 +23,12 @@ class FundLedgerCreateRequest(BaseModel):
     risk_target: Optional[str] = Field(None, max_length=40, description="风险目标，如 conservative/balanced/aggressive")
     investment_horizon: Optional[str] = Field(None, max_length=40, description="投资期限，如 6m/1y/3y+")
     rebalance_frequency: Optional[str] = Field(None, max_length=40, description="调仓频率，如 monthly/quarterly/ad_hoc")
+    drawdown_tolerance: Optional[str] = Field(None, max_length=40, description="最大回撤承受，如 lt_5/5_10/10_20/20_30/30_plus")
+    liquidity_need: Optional[str] = Field(None, max_length=40, description="资金流动性需求，如 anytime/within_3m/within_1y/long_term")
+    investment_experience: Optional[str] = Field(None, max_length=40, description="投资经验，如 beginner/familiar/experienced/professional")
+    monthly_budget: Optional[float] = Field(None, ge=0, le=10000000, description="可用于基金加仓/定投的月度预算")
+    cash_reserve_months: Optional[float] = Field(None, ge=0, le=120, description="现金安全垫月数")
+    preferred_fund_types: Optional[str] = Field(None, max_length=160, description="偏好基金类型，逗号分隔")
     notes: Optional[str] = Field(None, max_length=500, description="账户备注")
 
 
@@ -34,6 +40,12 @@ class FundLedgerUpdateRequest(BaseModel):
     risk_target: Optional[str] = Field(None, max_length=40, description="风险目标，如 conservative/balanced/aggressive")
     investment_horizon: Optional[str] = Field(None, max_length=40, description="投资期限，如 6m/1y/3y+")
     rebalance_frequency: Optional[str] = Field(None, max_length=40, description="调仓频率，如 monthly/quarterly/ad_hoc")
+    drawdown_tolerance: Optional[str] = Field(None, max_length=40, description="最大回撤承受，如 lt_5/5_10/10_20/20_30/30_plus")
+    liquidity_need: Optional[str] = Field(None, max_length=40, description="资金流动性需求，如 anytime/within_3m/within_1y/long_term")
+    investment_experience: Optional[str] = Field(None, max_length=40, description="投资经验，如 beginner/familiar/experienced/professional")
+    monthly_budget: Optional[float] = Field(None, ge=0, le=10000000, description="可用于基金加仓/定投的月度预算")
+    cash_reserve_months: Optional[float] = Field(None, ge=0, le=120, description="现金安全垫月数")
+    preferred_fund_types: Optional[str] = Field(None, max_length=160, description="偏好基金类型，逗号分隔")
     notes: Optional[str] = Field(None, max_length=500, description="账户备注")
 
 
@@ -52,6 +64,12 @@ class FundLedgerResponse(BaseModel):
     risk_target: Optional[str] = None
     investment_horizon: Optional[str] = None
     rebalance_frequency: Optional[str] = None
+    drawdown_tolerance: Optional[str] = None
+    liquidity_need: Optional[str] = None
+    investment_experience: Optional[str] = None
+    monthly_budget: Optional[float] = None
+    cash_reserve_months: Optional[float] = None
+    preferred_fund_types: Optional[str] = None
     notes: Optional[str] = None
     active: bool = True
     fund_count: int = 0
@@ -124,6 +142,7 @@ class FundMarketRankingItem(BaseModel):
     code: str
     name: Optional[str] = None
     fund_type: Optional[str] = None
+    industry: Optional[str] = None
     market: Optional[str] = None
     score: Optional[float] = None
     status: str = Field(..., description="ok/proxy_only/partial/stale/missing/not_supported/failed")
@@ -275,6 +294,7 @@ class FundHoldingCandidate(BaseModel):
     latest_nav: Optional[float] = Field(None, description="截图展示的最新/单位净值；缺失不估算")
     as_of_date: Optional[str] = Field(None, description="截图展示的数据日期，YYYY-MM-DD")
     confidence: str = Field("medium", description="OCR 解析置信度 high/medium/low 或 user_confirmed")
+    field_confidence: Dict[str, str] = Field(default_factory=dict, description="字段级置信度，如 code/name/market_value/units/cost_amount/pnl_amount/pnl_pct/latest_nav")
     source_platform: str = Field("other", description="来源平台 alipay/jd_finance/xueqiu/fund_e_account/other")
     source_channel: str = Field("ocr_preview", description="ocr_preview/platform_screenshot_user_confirmed")
     raw_index: Optional[int] = Field(None, description="预览候选行序号；确认后不保留原始 OCR")
@@ -326,6 +346,7 @@ class FundHoldingConfirmResponse(BaseModel):
     ledger: FundLedgerResponse
     confirmed_count: int = 0
     skipped: List[Dict[str, str]] = Field(default_factory=list)
+    change_summary: Dict[str, Any] = Field(default_factory=dict, description="本次确认相对该平台账本当前快照的新增、更新、移除摘要")
     items: List[FundHoldingSnapshotResponse] = Field(default_factory=list)
     limitations: List[str] = Field(default_factory=list)
 
@@ -335,6 +356,7 @@ class FundHoldingListResponse(BaseModel):
     status: str
     items: List[FundHoldingSnapshotResponse] = Field(default_factory=list)
     aggregated_by_code: List[Dict[str, Any]] = Field(default_factory=list)
+    portfolio_summary: Dict[str, Any] = Field(default_factory=dict, description="组合级市值、集中度、平台/账本分布和字段覆盖率摘要")
     total: int = 0
     ledger_id: Optional[int] = None
     limitations: List[str] = Field(default_factory=list)

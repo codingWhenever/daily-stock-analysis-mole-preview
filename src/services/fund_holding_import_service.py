@@ -258,6 +258,34 @@ def _parse_number_token(token: str | None) -> Optional[float]:
         return None
 
 
+def _holding_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed == parsed else None
+
+
+def _round_money(value: Optional[float]) -> Optional[float]:
+    if value is None:
+        return None
+    return round(float(value), 2)
+
+
+def _round_pct(value: Optional[float]) -> Optional[float]:
+    if value is None:
+        return None
+    return round(float(value), 2)
+
+
+def _percent(part: float, total: float) -> Optional[float]:
+    if total <= 0:
+        return None
+    return _round_pct(part / total * 100)
+
+
 def _find_labeled_number(text: str, labels: Iterable[str], *, percent: bool = False) -> Optional[float]:
     number = r"([+\-]?\d+(?:,\d{3})*(?:\.\d+)?(?:万|亿|%)?)"
     for label in labels:
@@ -324,13 +352,294 @@ def _iso_date_text(value: Any) -> Optional[str]:
     return text or None
 
 
+_HOLDING_COMPARE_FIELDS = (
+    "name",
+    "units",
+    "available_units",
+    "market_value",
+    "cost_amount",
+    "pnl_amount",
+    "pnl_pct",
+    "latest_nav",
+    "as_of_date",
+)
+
+_HOLDING_NUMERIC_FIELDS = {
+    "units",
+    "available_units",
+    "market_value",
+    "cost_amount",
+    "pnl_amount",
+    "pnl_pct",
+    "latest_nav",
+}
+
+
+def _holding_field_changed(previous: Any, current: Any, *, field: str) -> bool:
+    if field == "as_of_date":
+        return _iso_date_text(previous) != _iso_date_text(current)
+    if field in _HOLDING_NUMERIC_FIELDS:
+        if previous is None and current is None:
+            return False
+        if previous is None or current is None:
+            return True
+        try:
+            return abs(float(previous) - float(current)) > 0.000001
+        except (TypeError, ValueError):
+            return str(previous) != str(current)
+    previous_text = "" if previous is None else str(previous).strip()
+    current_text = "" if current is None else str(current).strip()
+    return previous_text != current_text
+
+
+def _holding_changed_fields(previous: Dict[str, Any], current: Dict[str, Any]) -> List[str]:
+    return [
+        field
+        for field in _HOLDING_COMPARE_FIELDS
+        if _holding_field_changed(previous.get(field), current.get(field), field=field)
+    ]
+
+
+def _build_holding_change_summary(
+    *,
+    existing_rows: Sequence[Dict[str, Any]],
+    normalized_rows: Sequence[Dict[str, Any]],
+    replace: bool,
+) -> Dict[str, Any]:
+    existing_by_code = {str(row.get("code") or ""): row for row in existing_rows if row.get("code")}
+    normalized_by_code = {str(row.get("code") or ""): row for row in normalized_rows if row.get("code")}
+    new_codes: List[str] = []
+    updated: List[Dict[str, Any]] = []
+    unchanged_codes: List[str] = []
+    for code in sorted(normalized_by_code):
+        current = normalized_by_code[code]
+        previous = existing_by_code.get(code)
+        if previous is None:
+            new_codes.append(code)
+            continue
+        fields = _holding_changed_fields(previous, current)
+        if fields:
+            updated.append({
+                "code": code,
+                "name": current.get("name") or previous.get("name"),
+                "fields": fields,
+            })
+        else:
+            unchanged_codes.append(code)
+    removed_codes = sorted(set(existing_by_code) - set(normalized_by_code)) if replace else []
+    return {
+        "mode": "replace" if replace else "merge",
+        "new_count": len(new_codes),
+        "updated_count": len(updated),
+        "unchanged_count": len(unchanged_codes),
+        "removed_count": len(removed_codes),
+        "new_codes": new_codes[:50],
+        "updated": updated[:50],
+        "unchanged_codes": unchanged_codes[:50],
+        "removed_codes": removed_codes[:50],
+        "has_changes": bool(new_codes or updated or removed_codes),
+    }
+
+
+def _holding_portfolio_summary(
+    *,
+    rows: Sequence[Dict[str, Any]],
+    aggregated: Sequence[Dict[str, Any]],
+    ledger_lookup: Dict[int, Dict[str, Any]],
+    ledger_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    holding_count = len(rows)
+    product_count = len(aggregated)
+    market_values = [_holding_float(row.get("market_value")) for row in rows]
+    cost_values = [_holding_float(row.get("cost_amount")) for row in rows]
+    pnl_values = [_holding_float(row.get("pnl_amount")) for row in rows]
+    unit_values = [_holding_float(row.get("units")) for row in rows]
+    has_cost_amount = any(value is not None for value in cost_values)
+    has_pnl_amount = any(value is not None for value in pnl_values)
+    total_market_value = sum(value for value in market_values if value is not None)
+    total_cost_amount = sum(value for value in cost_values if value is not None)
+    total_pnl_amount = sum(value for value in pnl_values if value is not None)
+    missing_market_value_count = sum(1 for value in market_values if value is None)
+
+    def _coverage(values: Sequence[Optional[float]]) -> float:
+        if not values:
+            return 0.0
+        present = sum(1 for value in values if value is not None)
+        return round(present / len(values) * 100, 2)
+
+    def _bucket(key: str, label: str, *, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        payload = {
+            "key": key,
+            "label": label,
+            "holding_count": 0,
+            "product_codes": set(),
+            "market_value": 0.0,
+            "missing_market_value_count": 0,
+        }
+        if extra:
+            payload.update(extra)
+        return payload
+
+    platform_buckets: Dict[str, Dict[str, Any]] = {}
+    ledger_buckets: Dict[int, Dict[str, Any]] = {}
+    for row in rows:
+        platform = normalize_source_platform(str(row.get("source_platform") or "other"))
+        platform_bucket = platform_buckets.setdefault(platform, _bucket(platform, PLATFORM_LABELS.get(platform, platform)))
+        row_ledger_id = int(row.get("ledger_id") or 0)
+        ledger = ledger_lookup.get(row_ledger_id, {})
+        ledger_bucket = ledger_buckets.setdefault(
+            row_ledger_id,
+            _bucket(
+                str(row_ledger_id),
+                str(ledger.get("name") or "未分账本"),
+                extra={"ledger_id": row_ledger_id or None},
+            ),
+        )
+        for bucket in (platform_bucket, ledger_bucket):
+            bucket["holding_count"] += 1
+            if row.get("code"):
+                bucket["product_codes"].add(str(row.get("code")))
+            market_value = _holding_float(row.get("market_value"))
+            if market_value is None:
+                bucket["missing_market_value_count"] += 1
+            else:
+                bucket["market_value"] += market_value
+
+    def _finalize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
+        product_codes = bucket.pop("product_codes", set())
+        market_value = float(bucket.get("market_value") or 0.0)
+        bucket["product_count"] = len(product_codes)
+        bucket["market_value"] = _round_money(market_value)
+        bucket["weight_pct"] = _percent(market_value, total_market_value)
+        return bucket
+
+    by_platform = sorted(
+        (_finalize_bucket(bucket) for bucket in platform_buckets.values()),
+        key=lambda item: (float(item.get("market_value") or 0.0), item.get("label") or ""),
+        reverse=True,
+    )
+    by_ledger = sorted(
+        (_finalize_bucket(bucket) for bucket in ledger_buckets.values()),
+        key=lambda item: (float(item.get("market_value") or 0.0), item.get("label") or ""),
+        reverse=True,
+    )
+
+    top_positions: List[Dict[str, Any]] = []
+    for item in sorted(
+        aggregated,
+        key=lambda row: _holding_float(row.get("market_value")) or 0.0,
+        reverse=True,
+    )[:5]:
+        market_value = _holding_float(item.get("market_value"))
+        top_positions.append(
+            {
+                "code": item.get("code"),
+                "name": item.get("name"),
+                "market_value": _round_money(market_value),
+                "weight_pct": _percent(market_value or 0.0, total_market_value),
+                "source_count": len(item.get("source_breakdown") or []),
+            }
+        )
+
+    top_weight_pct = _round_pct(_holding_float(top_positions[0].get("weight_pct"))) if top_positions else None
+    top3_weight = sum(_holding_float(item.get("market_value")) or 0.0 for item in top_positions[:3])
+    top3_weight_pct = _percent(top3_weight, total_market_value)
+    weights = [
+        (_holding_float(item.get("market_value")) or 0.0) / total_market_value
+        for item in aggregated
+        if total_market_value > 0 and (_holding_float(item.get("market_value")) or 0.0) > 0
+    ]
+    herfindahl_index = round(sum(weight * weight for weight in weights), 4) if weights else None
+    effective_product_count = round(1 / herfindahl_index, 2) if herfindahl_index else None
+
+    risk_flags: List[str] = []
+    concentration_status = "empty" if holding_count == 0 else "unknown"
+    if holding_count and total_market_value > 0:
+        concentration_status = "ok"
+        if (top_weight_pct or 0) >= 50:
+            risk_flags.append("single_position_extreme")
+            concentration_status = "high"
+        elif (top_weight_pct or 0) >= 35:
+            risk_flags.append("single_position_high")
+            concentration_status = "watch"
+        if (top3_weight_pct or 0) >= 85:
+            risk_flags.append("top3_concentration_extreme")
+            concentration_status = "high"
+        elif (top3_weight_pct or 0) >= 70:
+            risk_flags.append("top3_concentration_high")
+            if concentration_status == "ok":
+                concentration_status = "watch"
+    if missing_market_value_count:
+        risk_flags.append("market_value_missing")
+    if holding_count and product_count <= 2:
+        risk_flags.append("product_count_low")
+
+    limitations = [
+        "组合摘要仅基于用户确认后的基金持仓快照，不代表完整家庭资产或现金余额",
+        "行业暴露、真实申购赎回流水和现金可用额度尚未进入该摘要",
+    ]
+    if missing_market_value_count:
+        limitations.append("部分持仓缺少市值，集中度和平台分布只按已知市值计算")
+
+    return {
+        "status": "empty" if holding_count == 0 else ("partial" if missing_market_value_count else "completed"),
+        "scope": {
+            "ledger_id": ledger_id,
+            "basis": "confirmed_fund_holding_snapshots",
+        },
+        "holding_count": holding_count,
+        "product_count": product_count,
+        "platform_count": len(platform_buckets),
+        "ledger_count": len(ledger_buckets),
+        "total_market_value": _round_money(total_market_value),
+        "total_cost_amount": _round_money(total_cost_amount) if has_cost_amount else None,
+        "total_pnl_amount": _round_money(total_pnl_amount) if has_pnl_amount else None,
+        "pnl_pct": _round_pct(total_pnl_amount / total_cost_amount * 100) if total_cost_amount else None,
+        "amount_privacy_sensitive": True,
+        "concentration": {
+            "status": concentration_status,
+            "top_weight_pct": top_weight_pct,
+            "top3_weight_pct": top3_weight_pct,
+            "top_positions": top_positions,
+            "herfindahl_index": herfindahl_index,
+            "effective_product_count": effective_product_count,
+            "thresholds": {
+                "single_position_watch_pct": 35.0,
+                "single_position_high_pct": 50.0,
+                "top3_watch_pct": 70.0,
+                "top3_high_pct": 85.0,
+            },
+        },
+        "by_platform": by_platform,
+        "by_ledger": by_ledger,
+        "data_quality": {
+            "market_value_coverage_pct": _coverage(market_values),
+            "cost_amount_coverage_pct": _coverage(cost_values),
+            "pnl_amount_coverage_pct": _coverage(pnl_values),
+            "units_coverage_pct": _coverage(unit_values),
+            "missing_market_value_count": missing_market_value_count,
+            "missing_cost_amount_count": sum(1 for value in cost_values if value is None),
+            "missing_units_count": sum(1 for value in unit_values if value is None),
+        },
+        "risk_flags": risk_flags,
+        "limitations": limitations,
+    }
+
+
+def _present_field_confidence(fields: Dict[str, Any], confidence: str = "high") -> Dict[str, str]:
+    return {field: confidence for field, value in fields.items() if value is not None and value != ""}
+
+
 _HOLDING_LIST_NOISE_KEYWORDS = (
     "基金名称",
+    "名称",
     "金额",
     "昨日收益",
     "持仓收益",
+    "持有收益",
     "排序",
     "全部(",
+    "全部",
     "股票型",
     "债券型",
     "混合型",
@@ -348,6 +657,16 @@ _HOLDING_LIST_NOISE_KEYWORDS = (
     "简单",
     "快捷",
     "安全",
+    "投资锦囊",
+    "财富号",
+    "市场解读",
+    "定投",
+    "金选",
+    "指数基金",
+    "基金市场",
+    "排行",
+    "自选",
+    "持有",
 )
 
 
@@ -369,8 +688,10 @@ def _extract_layout_holding_rows(lines: Sequence[OCRTextLine], *, source_platfor
     if not lines:
         return []
     name_header = next((line for line in lines if "基金名称" in line.text), None)
+    if name_header is None:
+        name_header = next((line for line in lines if line.text.strip() == "名称"), None)
     amount_header = next((line for line in lines if "金额" in line.text and "收益" in line.text), None)
-    profit_header = next((line for line in lines if "持仓收益" in line.text), None)
+    profit_header = next((line for line in lines if "持仓收益" in line.text or "持有收益" in line.text), None)
     if not name_header or not amount_header or not profit_header:
         return []
 
@@ -444,6 +765,17 @@ def _extract_layout_holding_rows(lines: Sequence[OCRTextLine], *, source_platfor
             warnings.append("已识别昨日收益但当前持仓快照暂不入库该字段")
         if cost_amount is not None:
             warnings.append("成本由截图市值与持仓收益反推，请确认")
+        field_confidence = {
+            "code": "low",
+            "name": "high",
+            **_present_field_confidence({
+                "market_value": market_value,
+                "pnl_amount": pnl_amount,
+                "pnl_pct": pnl_pct,
+            }),
+        }
+        if cost_amount is not None:
+            field_confidence["cost_amount"] = "medium"
         rows.append(
             {
                 "code": "",
@@ -457,6 +789,7 @@ def _extract_layout_holding_rows(lines: Sequence[OCRTextLine], *, source_platfor
                 "latest_nav": None,
                 "as_of_date": None,
                 "confidence": "low",
+                "field_confidence": field_confidence,
                 "source_platform": source_platform,
                 "source_channel": "ocr_preview",
                 "raw_index": len(rows),
@@ -544,6 +877,15 @@ def _extract_xueqiu_text_holding_rows(text: str, *, source_platform: str) -> Lis
         ]
         if yesterday_pnl is not None:
             warnings.append("已识别日收益但当前持仓快照暂不入库该字段")
+        field_confidence = {
+            "code": "low",
+            "name": "high",
+            **_present_field_confidence({
+                "market_value": market_value,
+                "pnl_amount": pnl_amount,
+                "as_of_date": as_of_date,
+            }),
+        }
         rows.append(
             {
                 "code": "",
@@ -557,6 +899,7 @@ def _extract_xueqiu_text_holding_rows(text: str, *, source_platform: str) -> Lis
                 "latest_nav": None,
                 "as_of_date": as_of_date,
                 "confidence": "low",
+                "field_confidence": field_confidence,
                 "source_platform": source_platform,
                 "source_channel": "ocr_preview",
                 "raw_index": len(rows),
@@ -599,6 +942,20 @@ def parse_fund_holding_text(text: str, *, source_platform: str = "other") -> Lis
             latest_nav = _find_labeled_number(block, ["最新净值", "单位净值", "净值"])
             as_of_date = _parse_as_of_date(block) or _parse_as_of_date(text)
             confidence = "high" if name and (market_value is not None or units is not None) else "medium" if name else "low"
+            field_confidence = {
+                "code": "high",
+                **_present_field_confidence({"name": name}),
+                **_present_field_confidence({
+                    "market_value": market_value,
+                    "units": units,
+                    "available_units": available_units,
+                    "cost_amount": cost_amount,
+                    "pnl_amount": pnl_amount,
+                    "pnl_pct": pnl_pct,
+                    "latest_nav": latest_nav,
+                    "as_of_date": as_of_date,
+                }),
+            }
             dedup_key = f"{source_platform}:{code}:{index}"
             if dedup_key in seen:
                 continue
@@ -616,6 +973,7 @@ def parse_fund_holding_text(text: str, *, source_platform: str = "other") -> Lis
                     "latest_nav": latest_nav,
                     "as_of_date": as_of_date,
                     "confidence": confidence,
+                    "field_confidence": field_confidence,
                     "source_platform": source_platform,
                     "source_channel": "ocr_preview",
                     "raw_index": len(candidates),
@@ -663,6 +1021,8 @@ def _fund_name_alias_variants(value: str) -> List[str]:
     variants.append(value.replace("中国互联网50", "互联网50"))
     variants.append(value.replace("回报", "混合"))
     variants.append(value.replace("指数增强", "指数"))
+    variants.append(value.replace("灵活配置混合", "混合"))
+    variants.append(value.replace("产业混合", "产业混合发起式"))
     if value.endswith("混合"):
         variants.append(f"{value[:-2]}灵活配置混合")
     return variants
@@ -794,16 +1154,21 @@ class FundHoldingImportService:
         unit_nav, nav_date = self._latest_unit_nav_for_code(code)
         if unit_nav is None or unit_nav <= 0:
             return
+        field_confidence = dict(candidate.get("field_confidence") or {})
         if candidate.get("latest_nav") is None:
             candidate["latest_nav"] = round(unit_nav, 4)
+            field_confidence["latest_nav"] = "medium"
         if candidate.get("units") is None:
             candidate["units"] = round(market_value_float / unit_nav, 2)
+            field_confidence["units"] = "low"
             warnings = list(candidate.get("warnings") or [])
             if nav_date:
                 warnings.append(f"份额由市值 ÷ 公开单位净值 {unit_nav:g}（{nav_date}）反推，请确认")
             else:
                 warnings.append(f"份额由市值 ÷ 公开单位净值 {unit_nav:g} 反推，请确认")
             candidate["warnings"] = list(dict.fromkeys(item for item in warnings if item))
+        if field_confidence:
+            candidate["field_confidence"] = field_confidence
 
     def _resolve_fund_by_name(self, name: str) -> Tuple[Optional[Any], List[str]]:
         candidates: Dict[str, Any] = {}
@@ -854,13 +1219,20 @@ class FundHoldingImportService:
             candidate_warnings = list(candidate.get("warnings") or [])
             candidate_warnings.extend(warnings)
             if metadata is not None:
+                field_confidence = dict(candidate.get("field_confidence") or {})
                 candidate["code"] = str(getattr(metadata, "code", "") or "").zfill(6)
                 candidate["name"] = str(getattr(metadata, "name", "") or name) or name
                 candidate["confidence"] = "medium"
+                field_confidence["code"] = "medium"
+                field_confidence["name"] = "medium"
+                candidate["field_confidence"] = field_confidence
                 candidate_warnings.append("基金代码由公开基金名录按截图名称反查，请确认后再覆盖入账")
             else:
+                field_confidence = dict(candidate.get("field_confidence") or {})
                 candidate["code"] = ""
                 candidate["confidence"] = "low"
+                field_confidence["code"] = "low"
+                candidate["field_confidence"] = field_confidence
             candidate["warnings"] = list(dict.fromkeys(item for item in candidate_warnings if item))
             self._complete_candidate_from_public_nav(candidate)
             candidate["raw_index"] = len(resolved)
@@ -995,6 +1367,15 @@ class FundHoldingImportService:
                 name=name,
                 notes=f"{PLATFORM_LABELS[platform]} 持仓导入确认",
             )
+        existing_rows = [
+            item.to_dict()
+            for item in self.repo.list_holding_snapshots(ledger_id=target_ledger_id, source_platform=platform)
+        ]
+        change_summary = _build_holding_change_summary(
+            existing_rows=existing_rows,
+            normalized_rows=normalized,
+            replace=replace,
+        )
         snapshots = self.repo.save_holding_snapshots(
             ledger_id=target_ledger_id,
             source_platform=platform,
@@ -1009,6 +1390,7 @@ class FundHoldingImportService:
             "ledger": ledger_payload,
             "confirmed_count": len(normalized),
             "skipped": skipped,
+            "change_summary": change_summary,
             "items": [item.to_dict() for item in snapshots],
             "limitations": [
                 "该导入只代表用户确认后的当前持仓快照，不代表真实交易流水",
@@ -1066,11 +1448,23 @@ class FundHoldingImportService:
                 bucket["pnl_pct"] = round(float(pnl_amount or 0.0) / float(cost_amount) * 100, 2)
             if units:
                 bucket["cost_unit_price"] = round(float(cost_amount or 0.0) / float(units), 4)
+        aggregated_rows = list(aggregate.values())
+        ledger_lookup = {
+            int(item["id"]): item
+            for item in (ledger.to_dict() for ledger in self.repo.list_ledgers(active_only=True))
+            if item.get("id") is not None
+        }
         return {
             "schema_version": FUND_HOLDING_SNAPSHOT_SCHEMA_VERSION,
             "status": "completed",
             "items": rows,
-            "aggregated_by_code": list(aggregate.values()),
+            "aggregated_by_code": aggregated_rows,
+            "portfolio_summary": _holding_portfolio_summary(
+                rows=rows,
+                aggregated=aggregated_rows,
+                ledger_lookup=ledger_lookup,
+                ledger_id=ledger_id,
+            ),
             "total": len(rows),
             "ledger_id": ledger_id,
             "limitations": [

@@ -30,6 +30,21 @@ TRUE_BUY_SELL_UNSUPPORTED = {
     "reason": "公开行情/排行不披露基金级真实买入金额、卖出金额、买入笔数或卖出笔数",
 }
 
+INDUSTRY_THEME_KEYWORDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("半导体", ("半导体", "芯片", "集成电路", "科创芯片")),
+    ("通信", ("通信", "5G", "通讯", "光模块")),
+    ("人工智能", ("人工智能", "AI", "云计算", "机器人", "算力", "数据")),
+    ("新能源", ("新能源", "光伏", "电池", "储能", "锂电", "风电")),
+    ("医药", ("医药", "医疗", "生物", "创新药", "中药")),
+    ("消费", ("消费", "食品饮料", "白酒", "家电")),
+    ("金融", ("金融", "银行", "证券", "保险", "非银")),
+    ("军工", ("军工", "国防", "航天", "航空")),
+    ("汽车", ("汽车", "智能车", "新能源车", "车联网")),
+    ("红利", ("红利", "股息", "高股息")),
+    ("海外科技", ("纳斯达克", "标普", "恒生科技", "中概", "海外互联网", "QDII")),
+    ("宽基指数", ("沪深300", "中证500", "中证1000", "科创50", "创业板", "上证50", "A500")),
+)
+
 
 def _first_value(row: Dict[str, Any], *keys: str) -> Any:
     for key in keys:
@@ -45,6 +60,16 @@ def _infer_exchange(code: str) -> str:
     if text.startswith(("15", "16", "18", "159")):
         return "szse"
     return "eastmoney"
+
+
+def _infer_industry_theme(name: Any, fund_type: Any = None) -> str:
+    text = f"{name or ''} {fund_type or ''}".upper()
+    for industry, keywords in INDUSTRY_THEME_KEYWORDS:
+        if any(keyword.upper() in text for keyword in keywords):
+            return industry
+    if "ETF" in text or "指数" in text:
+        return "宽基/指数"
+    return "其他"
 
 
 def _parse_timestamp(value: Any) -> Optional[datetime]:
@@ -134,6 +159,10 @@ class FundMarketRankingService:
                 fetched_at=fetched_at,
                 reason=str(exc),
             ))
+
+        if any(group.get("items") for group in groups):
+            groups.extend(self._build_industry_ranking_groups(groups, fetched_at=fetched_at, limit=limit))
+            groups.extend(self._build_public_buy_sell_proxy_groups(groups, limit=limit))
 
         response_status = "completed" if any(group.get("items") for group in groups) else "failed"
         if any(group.get("status") in {"failed", "missing"} for group in groups) and response_status == "completed":
@@ -269,6 +298,7 @@ class FundMarketRankingService:
             main_net = _to_float(_first_value(raw, "主力净流入-净额", "主力净流入"))
             amount = _to_float(_first_value(raw, "成交额", "成交金额"))
             metrics = {
+                "industry": _infer_industry_theme(_first_value(raw, "名称", "基金简称"), "ETF"),
                 "latest_price": _to_float(_first_value(raw, "最新价", "最新")),
                 "change_pct": _to_float(_first_value(raw, "涨跌幅", "涨跌幅%")),
                 "amount": amount,
@@ -293,6 +323,7 @@ class FundMarketRankingService:
                 "code": code,
                 "name": str(_first_value(raw, "名称", "基金简称") or "") or None,
                 "fund_type": "ETF",
+                "industry": _infer_industry_theme(_first_value(raw, "名称", "基金简称"), "ETF"),
                 "market": _infer_exchange(code),
                 "score": None,
                 "status": "proxy_only",
@@ -376,6 +407,7 @@ class FundMarketRankingService:
             status = daily_status.get(code, {})
             data_date = _first_value(raw, "日期", "净值日期")
             metrics = {
+                "industry": _infer_industry_theme(_first_value(raw, "基金简称", "名称"), _first_value(raw, "类型", "基金类型")),
                 "unit_nav": _to_float(_first_value(raw, "单位净值")),
                 "accumulated_nav": _to_float(_first_value(raw, "累计净值")),
                 "daily_growth_pct": _to_float(_first_value(raw, "日增长率")),
@@ -395,6 +427,7 @@ class FundMarketRankingService:
                 "code": code,
                 "name": str(_first_value(raw, "基金简称", "名称") or "") or None,
                 "fund_type": str(_first_value(raw, "类型", "基金类型") or "") or None,
+                "industry": _infer_industry_theme(_first_value(raw, "基金简称", "名称"), _first_value(raw, "类型", "基金类型")),
                 "market": "open_fund",
                 "score": None,
                 "status": "ok",
@@ -451,6 +484,242 @@ class FundMarketRankingService:
             data_date = _first_value(first, "日期", "净值日期")
         return _freshness(data_date, fetched_at, "开放式基金日榜通常每日 16:00-23:00 后刷新")
 
+    def _build_public_buy_sell_proxy_groups(self, groups: List[Dict[str, Any]], *, limit: int) -> List[Dict[str, Any]]:
+        by_type = {group.get("rank_type"): group for group in groups}
+        result: List[Dict[str, Any]] = []
+        specs = [
+            ("etf_net_inflow", "public_buy_proxy_rank", "公开买入代理榜", "按 ETF 主力净流入代理市场买入强度；真实买入金额/笔数不可公开核验。"),
+            ("etf_net_outflow", "public_sell_proxy_rank", "公开卖出压力榜", "按 ETF 主力净流出代理市场卖出压力；真实卖出金额/笔数不可公开核验。"),
+        ]
+        for source_type, rank_type, title, description in specs:
+            source_group = by_type.get(source_type)
+            if not source_group or not source_group.get("items"):
+                continue
+            items = []
+            for index, item in enumerate(source_group.get("items", [])[:limit], start=1):
+                copied = {**item}
+                copied["rank"] = index
+                copied["recommendation_role"] = "market_buy_evidence" if source_type == "etf_net_inflow" else "market_sell_risk_evidence"
+                copied["proxy_type"] = "public_buy_sell_proxy_from_etf_flow"
+                copied["limitations"] = [
+                    "该榜单是公开交易资金流代理口径，不披露真实买入/卖出笔数。",
+                    *list(item.get("limitations") or []),
+                ]
+                items.append(copied)
+            result.append({
+                "rank_type": rank_type,
+                "title": title,
+                "description": description,
+                "status": "proxy_only",
+                "source": source_group.get("source") or "akshare.fund_etf_spot_em",
+                "source_url": source_group.get("source_url") or EASTMONEY_ETF_QUOTE_URL,
+                "freshness": source_group.get("freshness") or {},
+                "items": items,
+                "limitations": [
+                    "公开源没有基金级真实申购/赎回或买卖笔数，actual_* 字段保持 null。",
+                ],
+            })
+        return result
+
+    def _build_industry_ranking_groups(
+        self,
+        groups: List[Dict[str, Any]],
+        *,
+        fetched_at: datetime,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        source_items: List[Tuple[str, Dict[str, Any]]] = []
+        source_rank_types = {"etf_net_inflow", "etf_net_outflow", "etf_turnover_heat", "open_fund_return_rank"}
+        for group in groups:
+            rank_type = str(group.get("rank_type") or "")
+            if rank_type not in source_rank_types:
+                continue
+            for item in group.get("items") or []:
+                source_items.append((rank_type, item))
+        if not source_items:
+            return []
+
+        industry_stats: Dict[str, Dict[str, Any]] = {}
+        product_best: Dict[str, Dict[str, Any]] = {}
+        for rank_type, item in source_items:
+            metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+            industry = str(item.get("industry") or metrics.get("industry") or _infer_industry_theme(item.get("name"), item.get("fund_type")))
+            stats = industry_stats.setdefault(
+                industry,
+                {
+                    "industry": industry,
+                    "item_count": 0,
+                    "product_codes": set(),
+                    "score": 0.0,
+                    "proxy_net_inflow_amount": 0.0,
+                    "proxy_net_outflow_amount": 0.0,
+                    "proxy_turnover_amount": 0.0,
+                    "change_values": [],
+                    "return_3m_values": [],
+                    "top_products": [],
+                    "rank_types": set(),
+                },
+            )
+            stats["item_count"] += 1
+            stats["rank_types"].add(rank_type)
+            if item.get("code"):
+                stats["product_codes"].add(str(item.get("code")))
+            flow = _to_float(metrics.get("main_net_inflow_amount") or metrics.get("proxy_net_inflow_amount"))
+            turnover = _to_float(metrics.get("amount") or metrics.get("proxy_turnover_amount"))
+            change_pct = _to_float(metrics.get("change_pct") or metrics.get("daily_growth_pct"))
+            return_3m = _to_float(metrics.get("return_3m_pct"))
+            item_score = float(item.get("score") or 45.0)
+            if flow is not None:
+                if flow >= 0:
+                    stats["proxy_net_inflow_amount"] += flow
+                    item_score += min(flow / 10000000.0, 20.0)
+                else:
+                    stats["proxy_net_outflow_amount"] += abs(flow)
+                    item_score -= min(abs(flow) / 10000000.0, 14.0)
+            if turnover is not None and turnover > 0:
+                stats["proxy_turnover_amount"] += turnover
+                item_score += min(turnover / 1000000000.0, 18.0)
+            if change_pct is not None:
+                stats["change_values"].append(change_pct)
+                item_score += max(min(change_pct, 8.0), -8.0)
+            if return_3m is not None:
+                stats["return_3m_values"].append(return_3m)
+                item_score += min(max(return_3m, 0.0) / 5.0, 20.0)
+            product = {
+                **item,
+                "industry": industry,
+                "industry_source_rank_type": rank_type,
+                "industry_product_score": round(item_score, 2),
+            }
+            stats["top_products"].append(product)
+            code = str(item.get("code") or "")
+            if code:
+                previous = product_best.get(code)
+                if previous is None or product["industry_product_score"] > previous.get("industry_product_score", 0):
+                    product_best[code] = product
+
+        industry_rows: List[Dict[str, Any]] = []
+        for industry, stats in industry_stats.items():
+            product_count = len(stats["product_codes"])
+            avg_change = self._average(stats["change_values"])
+            avg_return_3m = self._average(stats["return_3m_values"])
+            score = stats["score"] + product_count * 2.0
+            if avg_return_3m is not None:
+                score += min(max(avg_return_3m, 0.0) / 3.0, 25.0)
+            top_products = sorted(
+                stats["top_products"],
+                key=lambda row: row.get("industry_product_score") or 0.0,
+                reverse=True,
+            )[:10]
+            industry_rows.append({
+                "rank": 0,
+                "code": f"industry:{industry}",
+                "name": industry,
+                "fund_type": "行业主题",
+                "industry": industry,
+                "market": "market_theme",
+                "score": round(score, 2),
+                "status": "proxy_only",
+                "proxy_type": "industry_aggregate_from_public_rankings",
+                "recommendation_role": "market_industry_evidence",
+                "metrics": {
+                    "industry": industry,
+                    "item_count": stats["item_count"],
+                    "product_count": product_count,
+                    "proxy_net_inflow_amount": round(stats["proxy_net_inflow_amount"], 2),
+                    "proxy_net_outflow_amount": round(stats["proxy_net_outflow_amount"], 2),
+                    "proxy_turnover_amount": round(stats["proxy_turnover_amount"], 2),
+                    "avg_change_pct": avg_change,
+                    "avg_return_3m_pct": avg_return_3m,
+                    "source_rank_types": sorted(stats["rank_types"]),
+                    "top_products": [
+                        {
+                            "code": row.get("code"),
+                            "name": row.get("name"),
+                            "score": row.get("industry_product_score"),
+                            "source_rank_type": row.get("industry_source_rank_type"),
+                        }
+                        for row in top_products
+                    ],
+                },
+                "evidence_metrics": {
+                    **TRUE_BUY_SELL_UNSUPPORTED,
+                    "proxy_fields": ["proxy_net_inflow_amount", "proxy_turnover_amount", "avg_return_3m_pct", "product_count"],
+                },
+                "source": "derived_from_public_market_rankings",
+                "source_url": AKSHARE_FUND_PUBLIC_DOC_URL,
+                "freshness": _freshness(None, fetched_at, "随原始公开榜单刷新"),
+                "limitations": ["行业归因来自基金名称/类型关键词和当前公开榜单条目，不代表全市场行业持仓穿透。"],
+            })
+
+        industry_rows.sort(key=lambda row: row.get("score") or 0.0, reverse=True)
+        for index, row in enumerate(industry_rows[:limit], start=1):
+            row["rank"] = index
+            row["score"] = _score_from_rank(index, min(len(industry_rows), limit))
+
+        industry_rank_by_name = {row["industry"]: row["rank"] for row in industry_rows[:limit]}
+        industry_score_by_name = {row["industry"]: row["score"] for row in industry_rows[:limit]}
+        product_rows = []
+        for item in product_best.values():
+            industry = str(item.get("industry") or "其他")
+            industry_rank = industry_rank_by_name.get(industry)
+            if industry_rank is None:
+                continue
+            copied = {**item}
+            copied_metrics = dict(copied.get("metrics") or {})
+            copied_metrics.update({
+                "industry": industry,
+                "industry_rank": industry_rank,
+                "industry_score": industry_score_by_name.get(industry),
+            })
+            copied["metrics"] = copied_metrics
+            copied["score"] = round(float(copied.get("industry_product_score") or copied.get("score") or 0.0) + float(industry_score_by_name.get(industry) or 0.0) * 0.25, 2)
+            copied["rank"] = 0
+            copied["recommendation_role"] = "market_industry_product_evidence"
+            copied["proxy_type"] = "industry_product_from_public_rankings"
+            copied["limitations"] = [
+                "行业内产品 Top10 来自公开榜单候选的行业归因，不代表全市场完整排名。",
+                *list(copied.get("limitations") or []),
+            ]
+            product_rows.append(copied)
+        product_rows.sort(key=lambda row: row.get("score") or 0.0, reverse=True)
+        selected_products = product_rows[:limit]
+        for index, row in enumerate(selected_products, start=1):
+            row["rank"] = index
+            row["score"] = _score_from_rank(index, len(selected_products))
+
+        return [
+            {
+                "rank_type": "industry_heat_top10",
+                "title": "行业热度 Top10",
+                "description": "按当前公开榜单候选聚合行业资金流、成交热度和收益表现，形成市场级行业观察。",
+                "status": "proxy_only",
+                "source": "derived_from_public_market_rankings",
+                "source_url": AKSHARE_FUND_PUBLIC_DOC_URL,
+                "freshness": _freshness(None, fetched_at, "随原始公开榜单刷新"),
+                "items": industry_rows[:limit],
+                "limitations": ["行业榜是公开榜单条目的关键词归因汇总，不读取个人持仓，也不代表全市场行业申赎。"],
+            },
+            {
+                "rank_type": "industry_product_top10",
+                "title": "行业内产品 Top10",
+                "description": "在高热行业中筛选公开证据更强的基金/ETF，作为荐基候选的前置实证。",
+                "status": _status_for_rows(selected_products, proxy_only=True),
+                "source": "derived_from_public_market_rankings",
+                "source_url": AKSHARE_FUND_PUBLIC_DOC_URL,
+                "freshness": _freshness(None, fetched_at, "随原始公开榜单刷新"),
+                "items": selected_products,
+                "limitations": ["行业内产品 Top10 仍是市场级候选，不等同个人买入建议。"],
+            },
+        ]
+
+    @staticmethod
+    def _average(values: List[float]) -> Optional[float]:
+        values = [float(value) for value in values if value is not None]
+        if not values:
+            return None
+        return round(sum(values) / len(values), 2)
+
     def _latest_group_date(self, groups: List[Dict[str, Any]]) -> Optional[str]:
         dates = [
             group.get("freshness", {}).get("data_date")
@@ -462,7 +731,13 @@ class FundMarketRankingService:
 
     def _build_market_seed_candidates(self, groups: List[Dict[str, Any]], *, limit: int) -> List[Dict[str, Any]]:
         candidates: Dict[str, Dict[str, Any]] = {}
-        preferred_rank_types = {"etf_net_inflow", "open_fund_return_rank", "etf_turnover_heat"}
+        preferred_rank_types = {
+            "industry_product_top10",
+            "public_buy_proxy_rank",
+            "etf_net_inflow",
+            "open_fund_return_rank",
+            "etf_turnover_heat",
+        }
         for group in groups:
             rank_type = group.get("rank_type")
             if rank_type not in preferred_rank_types:
