@@ -32,6 +32,12 @@ class MinimalFundProvider:
                 FundMetadata(code="006479", name="广发纳斯达克100ETF联接人民币(QDII)C", fund_type="指数型-海外股票"),
                 FundMetadata(code="270042", name="广发纳斯达克100ETF联接人民币(QDII)A", fund_type="指数型-海外股票"),
             ][:limit]
+        if "安信灵活配置混合" in query:
+            return [FundMetadata(code="750001", name="安信灵活配置混合A", fund_type="混合型")][:limit]
+        if "易方达安盈回报混合" in query:
+            return [FundMetadata(code="001603", name="易方达安盈回报混合A", fund_type="混合型")][:limit]
+        if "交银中证海外中国互联网指数" in query:
+            return [FundMetadata(code="164906", name="交银中证海外中国互联网指数(LOF)A", fund_type="QDII")][:limit]
         return []
 
     def get_nav_records(self, code: str) -> list[dict[str, object]]:
@@ -147,6 +153,42 @@ def test_preview_import_from_text_does_not_persist_snapshot() -> None:
     assert preview["source_platform"] == "jd_finance"
     assert preview["candidate_count"] == 1
     assert holdings["items"] == []
+
+
+def test_xueqiu_name_only_snapshot_resolves_rows_from_list_layout() -> None:
+    service = _service()
+    text = """
+    原日积月累
+    安信灵活配置混合A
+    更多数据>
+    5,790.33
+    -69.92
+    -470.27
+    持有金额(元)
+    日收益(06-25)
+    累计收益(元)
+    易方达安盈回报混合
+    更多数据>
+    5,735.07
+    +172.91
+    +4,024.63
+    持有金额(元)
+    日收益(06-25)
+    累计收益(元)
+    """
+
+    preview = service.preview_import(source_platform="xueqiu", ocr_text=text)
+    rows = preview["candidates"]
+
+    assert preview["status"] == "completed"
+    assert [row["code"] for row in rows] == ["750001", "001603"]
+    assert rows[0]["name"] == "安信灵活配置混合A"
+    assert rows[0]["market_value"] == 5790.33
+    assert rows[0]["pnl_amount"] == -470.27
+    assert rows[0]["as_of_date"] == "2026-06-25"
+    assert rows[1]["market_value"] == 5735.07
+    assert rows[1]["pnl_amount"] == 4024.63
+    assert all("雪球列表未展示份额" in " ".join(row["warnings"]) for row in rows)
 
 
 def test_confirm_import_writes_canonical_snapshot_and_analysis_pool_entry() -> None:
