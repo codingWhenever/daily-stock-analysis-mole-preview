@@ -369,6 +369,9 @@ export type FundHoldingPortfolioSummary = {
   totalPnlAmount?: number | null;
   pnlPct?: number | null;
   amountPrivacySensitive: boolean;
+  riskScore?: number | null;
+  riskLevel?: string | null;
+  riskReasons?: string[];
   concentration: Record<string, unknown>;
   byPlatform: FundHoldingPortfolioBucket[];
   byLedger: FundHoldingPortfolioBucket[];

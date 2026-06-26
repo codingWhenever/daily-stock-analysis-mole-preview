@@ -50,6 +50,24 @@ class RecommendationProvider:
             }
         )
 
+    def platform_sales_rank(self, *, sort_column: str = "SALESRANK_D", page_size: int = 30) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "FCODE": ["000057", "021528"],
+                "SHORTNAME": ["中银消费主题混合A", "财通成长优选混合C"],
+                "FUNDTYPE": ["002", "002"],
+                "FSRQ": ["2026-06-26", "2026-06-26"],
+                "DWJZ": ["1.4935", "5.923"],
+                "RZDF": ["-1.92", "5.26"],
+                "SYL_3Y": ["-2.64", "133.19"],
+                "SYL_6Y": ["-9.21", "150.76"],
+                "SALEVOLUME": ["49", "17"],
+                "PV_Y": ["694", "220"],
+                "DTCOUNT_Y": ["41", "12"],
+                "BUY": [True, True],
+            }
+        )
+
 
 def teardown_function():
     DatabaseManager.reset_instance()
@@ -74,7 +92,7 @@ def test_today_recommendations_are_market_only_and_not_personal_actions() -> Non
     assert candidate["personal_action"] is None
     assert candidate["personalized"] is False
     assert candidate["market_evidence"]
-    assert any(rank_type in candidate["source_rank_types"] for rank_type in {"industry_product_top10", "public_buy_proxy_rank"})
+    assert any(rank_type in candidate["source_rank_types"] for rank_type in {"platform_public_buy_rank", "industry_product_top10", "public_buy_proxy_rank"})
     assert candidate["backtest_readiness"]["status"] in {"ready_for_research", "insufficient_nav_history"}
     assert "buy" not in result["personalization"]["allowed_actions"]
 

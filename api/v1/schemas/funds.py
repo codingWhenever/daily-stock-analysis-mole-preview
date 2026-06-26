@@ -162,7 +162,7 @@ class FundMarketRankingItem(BaseModel):
 class FundMarketRankingGroup(BaseModel):
     rank_type: str = Field(
         ...,
-        description="etf_net_inflow/etf_net_outflow/etf_turnover_heat/open_fund_return_rank 等市场级榜单类型",
+        description="etf_net_inflow/etf_net_outflow/etf_turnover_heat/open_fund_return_rank/platform_public_buy_rank 等市场级榜单类型",
     )
     title: str
     description: Optional[str] = None

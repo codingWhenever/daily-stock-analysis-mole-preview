@@ -50,6 +50,7 @@ const PORTFOLIO_RISK_FLAG_LABELS: Record<string, string> = {
   top3_concentration_high: '前三偏高',
   market_value_missing: '市值缺失',
   product_count_low: '产品偏少',
+  platform_concentration_high: '平台集中',
 };
 
 function parseNumber(value: string): number | null {
@@ -122,6 +123,14 @@ function concentrationStatusLabel(value: string | null | undefined): string {
   if (value === 'ok') return '分散正常';
   if (value === 'empty') return '暂无持仓';
   return '待补数据';
+}
+
+function portfolioRiskLevelLabel(value: string | null | undefined): string {
+  if (value === 'high') return '组合风险高';
+  if (value === 'medium') return '组合风险中';
+  if (value === 'low') return '组合风险低';
+  if (value === 'empty') return '暂无持仓';
+  return '风险待评估';
 }
 
 function riskFlagLabel(value: string): string {
@@ -200,6 +209,8 @@ export const FundHoldingImportAssistant: React.FC<{
   const portfolioRiskFlags = portfolioSummary?.riskFlags || [];
   const portfolioPlatformBuckets = portfolioSummary?.byPlatform || [];
   const concentrationStatus = recordText(portfolioConcentration, 'status');
+  const portfolioRiskLevel = portfolioSummary?.riskLevel || '';
+  const portfolioRiskScore = portfolioSummary?.riskScore ?? null;
   const topWeightPct = recordNumber(portfolioConcentration, 'topWeightPct');
   const top3WeightPct = recordNumber(portfolioConcentration, 'top3WeightPct');
   const marketValueCoveragePct = recordNumber(portfolioDataQuality, 'marketValueCoveragePct');
@@ -596,6 +607,9 @@ export const FundHoldingImportAssistant: React.FC<{
               <div className="mb-3 grid gap-3 xl:grid-cols-[minmax(0,1.08fr)_minmax(280px,0.92fr)]">
                 <div className="rounded-xl border border-subtle bg-surface-2/55 px-3 py-3">
                   <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={portfolioRiskLevel === 'high' ? 'warning' : portfolioRiskLevel === 'low' ? 'success' : 'info'}>
+                      {portfolioRiskLevelLabel(portfolioRiskLevel)}
+                    </Badge>
                     <Badge variant={concentrationStatus === 'high' ? 'warning' : 'info'}>{concentrationStatusLabel(concentrationStatus)}</Badge>
                     {portfolioRiskFlags.slice(0, 4).map((flag) => (
                       <Badge key={flag} variant={flag.includes('extreme') || flag.includes('high') ? 'warning' : 'default'}>
@@ -623,6 +637,10 @@ export const FundHoldingImportAssistant: React.FC<{
                     <div>
                       <p className="text-muted-text">前三合计</p>
                       <p className="mt-1 text-base font-semibold text-foreground">{displayPercent(top3WeightPct, amountsVisible)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-text">风险分</p>
+                      <p className="mt-1 text-base font-semibold text-foreground">{numberText(portfolioRiskScore, 1) || '--'}</p>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-secondary-text">

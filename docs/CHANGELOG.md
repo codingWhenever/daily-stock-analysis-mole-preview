@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [新增] 持仓快照接口新增组合级市值、盈亏、集中度、平台/账本分布和字段覆盖率摘要，/funds 默认闭眼展示。
 - [新增] 基金账本画像问卷扩展最大回撤、流动性、投资经验、月度预算、现金安全垫和偏好类型，并进入个人动作金额约束。
 - [新增] 市场公开榜单派生行业热度 Top10、行业内产品 Top10、公开买入代理榜和卖出压力榜，继续明确真实申赎/买卖笔数不可公开核验。
+- [新增] 市场公开榜单接入天天基金移动端公开热销排行，买入热度榜优先使用平台公开销售热度字段，卖出榜继续明确为 ETF 净流出压力代理。
+- [改进] 持仓快照组合摘要新增风险分、风险等级和风险原因，基于当前确认市值、集中度、产品数量、平台集中和字段覆盖率计算。
 - [改进] /funds 个人动作默认只展开 6 条摘要，并将同类比较改为超宽屏并排，减少页面过长和窄列挤压。
 - [改进] 通知报告的分析结果摘要不再展开 AI 决策信号明细，完整信号保留在个股详情和单股报告中。
 - [新功能] #1595 P1.5 新增 Provider Cache Capability Registry，按 provider、api surface、gateway 和 verification status 建模 prompt cache 能力，未知 OpenAI-compatible route 默认 telemetry only。

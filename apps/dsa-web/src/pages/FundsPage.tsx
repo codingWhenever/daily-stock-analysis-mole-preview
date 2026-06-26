@@ -121,9 +121,10 @@ const MARKET_RANK_TYPE_LABELS: Record<string, string> = {
   etf_net_outflow: 'ETF 流出',
   etf_turnover_heat: 'ETF 热度',
   open_fund_return_rank: '收益实证',
+  platform_public_buy_rank: '平台热销',
   industry_heat_top10: '行业 Top10',
   industry_product_top10: '行业产品',
-  public_buy_proxy_rank: '买入代理',
+  public_buy_proxy_rank: '买入热度',
   public_sell_proxy_rank: '卖出压力',
 };
 
@@ -1234,10 +1235,14 @@ const MarketRankingRow: React.FC<{ item: FundMarketRankingItem; rankType: string
   const productCount = readNumber(metrics, ['productCount', 'product_count']);
   const avgReturn3m = readNumber(metrics, ['avgReturn3mPct', 'avg_return_3m_pct']);
   const industryScore = readNumber(metrics, ['industryScore', 'industry_score']);
+  const saleVolume = readNumber(metrics, ['platformSaleVolume', 'platform_sale_volume']);
+  const pageView = readNumber(metrics, ['platformPageViewYesterday', 'platform_page_view_yesterday']);
   const primaryMetric = rankType === 'industry_heat_top10'
     ? { label: '行业热度', value: formatNumber(item.score, 1), className: 'text-foreground' }
     : rankType === 'industry_product_top10'
       ? { label: '行业分', value: formatNumber(industryScore ?? item.score, 1), className: 'text-foreground' }
+      : rankType === 'platform_public_buy_rank' || (rankType === 'public_buy_proxy_rank' && saleVolume !== null)
+        ? { label: '热销', value: formatNumber(saleVolume, 0), className: 'text-success' }
       : rankType === 'etf_net_outflow' || rankType === 'public_sell_proxy_rank'
     ? { label: '净流出', value: formatLargeAmount(outflow), className: 'text-danger' }
     : rankType === 'etf_net_inflow' || rankType === 'public_buy_proxy_rank'
@@ -1249,6 +1254,8 @@ const MarketRankingRow: React.FC<{ item: FundMarketRankingItem; rankType: string
     ? `产品 ${productCount ?? '--'} · 净流入 ${formatLargeAmount(flow)} · 均值3月 ${formatPct(avgReturn3m)}`
     : rankType === 'industry_product_top10'
       ? `行业 ${item.industry || readString(metrics, ['industry']) || '--'} · 近3月 ${formatPct(return3m)} · 成交 ${formatLargeAmount(amount)}`
+      : rankType === 'platform_public_buy_rank' || (rankType === 'public_buy_proxy_rank' && saleVolume !== null)
+        ? `浏览 ${formatNumber(pageView, 0)} · 近3月 ${formatPct(return3m)}`
       : rankType.startsWith('etf') || rankType.startsWith('public_')
     ? `涨跌 ${formatPct(changePct)} · 成交 ${formatLargeAmount(amount)}`
     : `近6月 ${formatPct(return6m)} · 申购 ${readString(metrics, ['purchaseStatus', 'purchase_status']) || '--'}`;
@@ -1295,9 +1302,14 @@ function recommendationEvidenceText(evidence: Record<string, unknown>): string {
   const return3m = readNumber(metrics, ['return3mPct', 'return_3m_pct']);
   const changePct = readNumber(metrics, ['changePct', 'change_pct', 'dailyGrowthPct', 'daily_growth_pct']);
   const industry = readString(metrics, ['industry']);
+  const saleVolume = readNumber(metrics, ['platformSaleVolume', 'platform_sale_volume']);
+  const pageView = readNumber(metrics, ['platformPageViewYesterday', 'platform_page_view_yesterday']);
   const label = MARKET_RANK_TYPE_LABELS[rankType] || rankType;
   const prefix = rank ? `${label} #${rank}` : label;
 
+  if (rankType === 'platform_public_buy_rank' || (rankType === 'public_buy_proxy_rank' && saleVolume !== null)) {
+    return `${prefix} · 热销 ${formatNumber(saleVolume, 0)} · 浏览 ${formatNumber(pageView, 0)}`;
+  }
   if (rankType === 'etf_net_inflow' || rankType === 'public_buy_proxy_rank') return `${prefix} · 净流入 ${formatLargeAmount(flow)} · 涨跌 ${formatPct(changePct)}`;
   if (rankType === 'etf_net_outflow' || rankType === 'public_sell_proxy_rank') return `${prefix} · 净流出 ${formatLargeAmount(outflow)} · 涨跌 ${formatPct(changePct)}`;
   if (rankType === 'etf_turnover_heat') return `${prefix} · 成交额 ${formatLargeAmount(amount)} · 涨跌 ${formatPct(changePct)}`;

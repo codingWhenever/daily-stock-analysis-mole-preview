@@ -534,6 +534,10 @@ def test_list_holdings_returns_portfolio_concentration_summary() -> None:
     assert summary["total_pnl_amount"] == 6000.0
     assert summary["pnl_pct"] == 17.65
     assert summary["amount_privacy_sensitive"] is True
+    assert summary["risk_level"] == "high"
+    assert summary["risk_score"] == 70.0
+    assert "单只基金市值占比偏高" in summary["risk_reasons"]
+    assert "持仓主要集中在单一来源平台" not in summary["risk_reasons"]
     assert concentration["status"] == "high"
     assert concentration["top_weight_pct"] == 75.0
     assert concentration["top3_weight_pct"] == 100.0
@@ -541,6 +545,7 @@ def test_list_holdings_returns_portfolio_concentration_summary() -> None:
     assert concentration["top_positions"][0]["weight_pct"] == 75.0
     assert "single_position_extreme" in summary["risk_flags"]
     assert "top3_concentration_extreme" in summary["risk_flags"]
+    assert "platform_concentration_high" not in summary["risk_flags"]
     assert summary["by_platform"][0]["key"] == "alipay"
     assert summary["by_platform"][0]["weight_pct"] == 87.5
     assert summary["data_quality"]["market_value_coverage_pct"] == 100.0

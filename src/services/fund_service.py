@@ -434,6 +434,44 @@ class AkshareFundProvider:
 
         return self._cached("fund_etf_spot_em", ak.fund_etf_spot_em)
 
+    def platform_sales_rank(self, *, sort_column: str = "SALESRANK_D", page_size: int = 30) -> pd.DataFrame:
+        """Return Tiantian public mobile fund sales ranking rows.
+
+        The source exposes a public heat/sales rank, not personal account activity
+        and not a verified redemption/sell list.
+        """
+        import requests
+
+        normalized_sort = sort_column or "SALESRANK_D"
+        normalized_size = max(1, min(int(page_size or 30), 100))
+
+        def load() -> pd.DataFrame:
+            _install_requests_default_timeout(12)
+            response = requests.get(
+                "https://fundmobapi.eastmoney.com/FundMNewApi/FundMNRank",
+                params={
+                    "plat": "Android",
+                    "appType": "ttjj",
+                    "product": "EFund",
+                    "Version": "6.2.4",
+                    "deviceid": "daily-stock-analysis",
+                    "FundType": "0",
+                    "SortColumn": normalized_sort,
+                    "Sort": "desc",
+                    "pageIndex": "1",
+                    "pageSize": str(normalized_size),
+                    "BUY": "true",
+                    "ISABNORMAL": "true",
+                },
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            rows = payload.get("Datas") if isinstance(payload, dict) else None
+            return pd.DataFrame(rows or [])
+
+        return self._cached(f"eastmoney_fund_mobile_rank:{normalized_sort}:{normalized_size}", load)
+
     def exchange_fund_rank(self) -> pd.DataFrame:
         import akshare as ak
 

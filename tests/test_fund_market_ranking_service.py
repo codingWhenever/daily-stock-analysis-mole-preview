@@ -73,6 +73,28 @@ class FakeMarketRankingProvider:
             }
         )
 
+    def platform_sales_rank(self, *, sort_column: str = "SALESRANK_D", page_size: int = 30) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "FCODE": ["000057", "000028"],
+                "SHORTNAME": ["中银消费主题混合A", "华富安鑫债券A"],
+                "FUNDTYPE": ["002", "003"],
+                "FSRQ": ["2026-06-26", "2026-06-26"],
+                "DWJZ": ["1.4935", "1.0182"],
+                "RZDF": ["-1.92", "0.02"],
+                "SYL_Y": ["0.51", "0.28"],
+                "SYL_3Y": ["-2.64", "1.02"],
+                "SYL_6Y": ["-9.21", "2.81"],
+                "SYL_1N": ["-11.94", "4.08"],
+                "SALEVOLUME": ["49", "31"],
+                "PV_Y": ["694", "410"],
+                "DTCOUNT_Y": ["41", "9"],
+                "BUY": [True, True],
+                "ORGSALESRANK": ["--", "--"],
+                "ISABNORMAL": ["0", "0"],
+            }
+        )
+
 
 class EmptyMarketRankingProvider(FakeMarketRankingProvider):
     def etf_spot(self) -> pd.DataFrame:
@@ -84,6 +106,9 @@ class EmptyMarketRankingProvider(FakeMarketRankingProvider):
     def open_fund_daily(self) -> pd.DataFrame:
         return pd.DataFrame()
 
+    def platform_sales_rank(self, *, sort_column: str = "SALESRANK_D", page_size: int = 30) -> pd.DataFrame:
+        return pd.DataFrame()
+
 
 class FailingMarketRankingProvider(FakeMarketRankingProvider):
     def etf_spot(self) -> pd.DataFrame:
@@ -91,6 +116,9 @@ class FailingMarketRankingProvider(FakeMarketRankingProvider):
 
     def open_fund_rank(self, symbol: str) -> pd.DataFrame:
         raise RuntimeError("open fund source down")
+
+    def platform_sales_rank(self, *, sort_column: str = "SALESRANK_D", page_size: int = 30) -> pd.DataFrame:
+        raise RuntimeError("platform sales source down")
 
 
 def test_market_rankings_build_public_proxy_groups_without_personalization() -> None:
@@ -109,6 +137,7 @@ def test_market_rankings_build_public_proxy_groups_without_personalization() -> 
         "etf_net_outflow",
         "etf_turnover_heat",
         "open_fund_return_rank",
+        "platform_public_buy_rank",
         "industry_heat_top10",
         "industry_product_top10",
         "public_buy_proxy_rank",
@@ -134,6 +163,13 @@ def test_market_rankings_build_public_proxy_groups_without_personalization() -> 
     assert open_fund["evidence_metrics"]["actual_subscription_amount"] is None
     assert open_fund["evidence_metrics"]["proxy_return_3m_pct"] == 133.41
 
+    platform_buy = groups["platform_public_buy_rank"]["items"][0]
+    assert platform_buy["code"] == "000057"
+    assert platform_buy["source"] == "eastmoney.fundmobapi.FundMNRank"
+    assert platform_buy["evidence_metrics"]["availability"] == "platform_public_rank_only"
+    assert platform_buy["evidence_metrics"]["platform_public_purchase_count_proxy"] == 49.0
+    assert platform_buy["metrics"]["platform_page_view_yesterday"] == 694.0
+
     industry = groups["industry_heat_top10"]["items"][0]
     assert industry["name"] == "半导体"
     assert industry["metrics"]["product_count"] >= 1
@@ -145,8 +181,9 @@ def test_market_rankings_build_public_proxy_groups_without_personalization() -> 
     assert industry_product["recommendation_role"] == "market_industry_product_evidence"
 
     buy_proxy = groups["public_buy_proxy_rank"]["items"][0]
-    assert buy_proxy["code"] == "159516"
-    assert buy_proxy["evidence_metrics"]["availability"] == "not_supported"
+    assert buy_proxy["code"] == "000057"
+    assert buy_proxy["proxy_type"] == "public_buy_proxy_from_platform_sales_rank"
+    assert buy_proxy["evidence_metrics"]["availability"] == "platform_public_rank_only"
 
     assert result["recommendation_candidates"]
     assert result["recommendation_candidates"][0]["personalized"] is False
@@ -190,3 +227,4 @@ def test_market_rankings_provider_failures_return_failed_groups() -> None:
     assert {group["status"] for group in result["groups"]} == {"failed"}
     assert any("etf source down" in item for group in result["groups"] for item in group["limitations"])
     assert any("open fund source down" in item for group in result["groups"] for item in group["limitations"])
+    assert any("platform sales source down" in item for group in result["groups"] for item in group["limitations"])

@@ -573,6 +573,51 @@ def _holding_portfolio_summary(
         risk_flags.append("market_value_missing")
     if holding_count and product_count <= 2:
         risk_flags.append("product_count_low")
+    platform_top_weight_pct = max(
+        (_holding_float(item.get("weight_pct")) or 0.0 for item in by_platform),
+        default=0.0,
+    )
+    if holding_count > 1 and platform_top_weight_pct >= 90:
+        risk_flags.append("platform_concentration_high")
+
+    risk_score = 0.0
+    if holding_count and total_market_value > 0:
+        if (top_weight_pct or 0.0) >= 50:
+            risk_score += 35.0
+        elif (top_weight_pct or 0.0) >= 35:
+            risk_score += 22.0
+        elif (top_weight_pct or 0.0) >= 25:
+            risk_score += 10.0
+        if (top3_weight_pct or 0.0) >= 85:
+            risk_score += 28.0
+        elif (top3_weight_pct or 0.0) >= 70:
+            risk_score += 16.0
+        if product_count <= 2:
+            risk_score += 16.0
+        elif product_count <= 4:
+            risk_score += 7.0
+        if platform_top_weight_pct >= 90 and holding_count > 1:
+            risk_score += 8.0
+        if missing_market_value_count:
+            risk_score += 14.0
+    risk_score = round(min(risk_score, 100.0), 1) if holding_count else None
+    risk_level = (
+        "empty" if holding_count == 0
+        else "high" if (risk_score or 0.0) >= 70
+        else "medium" if (risk_score or 0.0) >= 40
+        else "low"
+    )
+    risk_reasons: List[str] = []
+    if "single_position_extreme" in risk_flags or "single_position_high" in risk_flags:
+        risk_reasons.append("单只基金市值占比偏高")
+    if "top3_concentration_extreme" in risk_flags or "top3_concentration_high" in risk_flags:
+        risk_reasons.append("前三持仓集中度偏高")
+    if "product_count_low" in risk_flags:
+        risk_reasons.append("确认持仓产品数量偏少")
+    if "platform_concentration_high" in risk_flags:
+        risk_reasons.append("持仓主要集中在单一来源平台")
+    if "market_value_missing" in risk_flags:
+        risk_reasons.append("部分持仓缺少市值，风险评分只覆盖已知市值")
 
     limitations = [
         "组合摘要仅基于用户确认后的基金持仓快照，不代表完整家庭资产或现金余额",
@@ -596,6 +641,9 @@ def _holding_portfolio_summary(
         "total_pnl_amount": _round_money(total_pnl_amount) if has_pnl_amount else None,
         "pnl_pct": _round_pct(total_pnl_amount / total_cost_amount * 100) if total_cost_amount else None,
         "amount_privacy_sensitive": True,
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "risk_reasons": risk_reasons,
         "concentration": {
             "status": concentration_status,
             "top_weight_pct": top_weight_pct,

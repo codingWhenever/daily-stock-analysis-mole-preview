@@ -18,6 +18,7 @@ MARKET_FUND_RANKING_SCHEMA_VERSION = "market_fund_ranking_v1"
 AKSHARE_FUND_PUBLIC_DOC_URL = "https://akshare.akfamily.xyz/data/fund/fund_public.html"
 EASTMONEY_ETF_QUOTE_URL = "https://quote.eastmoney.com/center/gridlist.html#fund_etf"
 EASTMONEY_OPEN_FUND_RANK_URL = "https://fund.eastmoney.com/data/fundranking.html"
+EASTMONEY_MOBILE_FUND_RANK_URL = "https://fundmobapi.eastmoney.com/FundMNewApi/FundMNRank"
 
 TRUE_BUY_SELL_UNSUPPORTED = {
     "actual_buy_amount": None,
@@ -28,6 +29,12 @@ TRUE_BUY_SELL_UNSUPPORTED = {
     "actual_redemption_amount": None,
     "availability": "not_supported",
     "reason": "公开行情/排行不披露基金级真实买入金额、卖出金额、买入笔数或卖出笔数",
+}
+
+PLATFORM_PUBLIC_BUY_RANK_UNSUPPORTED = {
+    **TRUE_BUY_SELL_UNSUPPORTED,
+    "availability": "platform_public_rank_only",
+    "reason": "天天基金公开热销排行披露销售热度/购买人数类字段，但不披露用户级真实买入流水、申购金额或卖出/赎回数据",
 }
 
 INDUSTRY_THEME_KEYWORDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
@@ -156,6 +163,34 @@ class FundMarketRankingService:
                 title="开放式基金收益实证榜",
                 source="akshare.fund_open_fund_rank_em",
                 source_url=EASTMONEY_OPEN_FUND_RANK_URL,
+                fetched_at=fetched_at,
+                reason=str(exc),
+            ))
+
+        try:
+            platform_rank_loader = getattr(self.provider, "platform_sales_rank")
+            platform_sales_df = _call_with_timeout(
+                "天天基金公开热销排行",
+                lambda: platform_rank_loader(sort_column="SALESRANK_D", page_size=limit),
+                timeout=12,
+            )
+            groups.append(self._build_platform_public_buy_group(platform_sales_df, fetched_at, limit=limit))
+        except AttributeError:
+            groups.append(self._failed_group(
+                rank_type="platform_public_buy_rank",
+                title="平台公开热销榜",
+                source="eastmoney.fundmobapi.FundMNRank",
+                source_url=EASTMONEY_MOBILE_FUND_RANK_URL,
+                fetched_at=fetched_at,
+                reason="当前 provider 未实现 platform_sales_rank",
+            ))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("天天基金公开热销榜获取失败: %s", exc)
+            groups.append(self._failed_group(
+                rank_type="platform_public_buy_rank",
+                title="平台公开热销榜",
+                source="eastmoney.fundmobapi.FundMNRank",
+                source_url=EASTMONEY_MOBILE_FUND_RANK_URL,
                 fetched_at=fetched_at,
                 reason=str(exc),
             ))
@@ -484,25 +519,128 @@ class FundMarketRankingService:
             data_date = _first_value(first, "日期", "净值日期")
         return _freshness(data_date, fetched_at, "开放式基金日榜通常每日 16:00-23:00 后刷新")
 
+    def _build_platform_public_buy_group(self, df: pd.DataFrame, fetched_at: datetime, *, limit: int) -> Dict[str, Any]:
+        rows = self._normalize_platform_sales_rows(df, fetched_at)
+        rows.sort(
+            key=lambda row: (
+                row["metrics"].get("platform_sale_volume") is not None,
+                row["metrics"].get("platform_sale_volume") or 0.0,
+                row["metrics"].get("platform_page_view_yesterday") or 0.0,
+            ),
+            reverse=True,
+        )
+        selected = rows[:limit]
+        total = len(selected)
+        for index, row in enumerate(selected, start=1):
+            row["rank"] = index
+            row["score"] = _score_from_rank(index, total)
+            row["recommendation_role"] = "market_buy_evidence"
+        return {
+            "rank_type": "platform_public_buy_rank",
+            "title": "平台公开热销榜",
+            "description": "按天天基金公开移动端热销排行和销售热度字段排序，是平台公开买入热度证据，不读取用户个人数据。",
+            "status": _status_for_rows(selected, proxy_only=True),
+            "source": "eastmoney.fundmobapi.FundMNRank",
+            "source_url": EASTMONEY_MOBILE_FUND_RANK_URL,
+            "freshness": self._platform_sales_group_freshness(df, fetched_at),
+            "items": selected,
+            "limitations": [
+                "该榜单来自公开平台热销排行，只能说明平台公开购买热度，不披露用户级真实买入流水。",
+                "公开接口没有对应真实卖出/赎回榜，卖出压力仍需使用资金流出等代理指标。",
+            ],
+        }
+
+    def _normalize_platform_sales_rows(self, df: pd.DataFrame, fetched_at: datetime) -> List[Dict[str, Any]]:
+        if df is None or df.empty:
+            return []
+        records: List[Dict[str, Any]] = []
+        for raw in df.to_dict(orient="records"):
+            code = str(_first_value(raw, "FCODE", "基金代码", "代码") or "").zfill(6)
+            if not code or code == "000000":
+                continue
+            name = _first_value(raw, "SHORTNAME", "基金简称", "名称")
+            fund_type = _first_value(raw, "FUNDTYPE", "BFUNDTYPE", "类型")
+            data_date = _first_value(raw, "FSRQ", "日期", "净值日期")
+            sale_volume = _to_float(_first_value(raw, "SALEVOLUME", "SALECOUNT", "购买人数", "销量"))
+            page_view = _to_float(_first_value(raw, "PV_Y", "浏览量", "昨日浏览"))
+            discussion_count = _to_float(_first_value(raw, "DTCOUNT_Y", "讨论数", "昨日讨论"))
+            metrics = {
+                "industry": _infer_industry_theme(name, fund_type),
+                "unit_nav": _to_float(_first_value(raw, "DWJZ", "单位净值")),
+                "daily_growth_pct": _to_float(_first_value(raw, "RZDF", "日增长率")),
+                "return_1w_pct": _to_float(_first_value(raw, "SYL_Z")),
+                "return_1m_pct": _to_float(_first_value(raw, "SYL_Y")),
+                "return_3m_pct": _to_float(_first_value(raw, "SYL_3Y")),
+                "return_6m_pct": _to_float(_first_value(raw, "SYL_6Y")),
+                "return_1y_pct": _to_float(_first_value(raw, "SYL_1N")),
+                "platform_sale_volume": sale_volume,
+                "platform_page_view_yesterday": page_view,
+                "platform_discussion_count_yesterday": discussion_count,
+                "platform_buy_enabled": bool(_first_value(raw, "BUY")),
+                "platform_org_sales_rank": str(_first_value(raw, "ORGSALESRANK") or "") or None,
+                "platform_is_abnormal": str(_first_value(raw, "ISABNORMAL") or "") or None,
+            }
+            records.append({
+                "rank": 0,
+                "code": code,
+                "name": str(name or "") or None,
+                "fund_type": str(fund_type or "") or None,
+                "industry": _infer_industry_theme(name, fund_type),
+                "market": "open_fund",
+                "score": None,
+                "status": "proxy_only",
+                "proxy_type": "tiantian_public_sales_rank",
+                "recommendation_role": None,
+                "metrics": metrics,
+                "evidence_metrics": {
+                    **PLATFORM_PUBLIC_BUY_RANK_UNSUPPORTED,
+                    "platform_public_purchase_count_proxy": sale_volume,
+                    "platform_public_page_view_yesterday": page_view,
+                    "platform_public_discussion_count_yesterday": discussion_count,
+                    "proxy_fields": ["SALESRANK_D", "SALEVOLUME", "PV_Y", "DTCOUNT_Y"],
+                },
+                "source": "eastmoney.fundmobapi.FundMNRank",
+                "source_url": EASTMONEY_MOBILE_FUND_RANK_URL,
+                "freshness": _freshness(data_date, fetched_at, "天天基金移动端公开热销榜；通常随平台榜单刷新"),
+                "limitations": ["平台公开热销字段不能还原真实申购金额、买入笔数或个人订单。"],
+            })
+        return records
+
+    def _platform_sales_group_freshness(self, df: pd.DataFrame, fetched_at: datetime) -> Dict[str, Any]:
+        data_date = None
+        if df is not None and not df.empty:
+            first = df.iloc[0].to_dict()
+            data_date = _first_value(first, "FSRQ", "日期", "净值日期")
+        return _freshness(data_date, fetched_at, "天天基金移动端公开热销榜；通常随平台榜单刷新")
+
     def _build_public_buy_sell_proxy_groups(self, groups: List[Dict[str, Any]], *, limit: int) -> List[Dict[str, Any]]:
         by_type = {group.get("rank_type"): group for group in groups}
         result: List[Dict[str, Any]] = []
         specs = [
-            ("etf_net_inflow", "public_buy_proxy_rank", "公开买入代理榜", "按 ETF 主力净流入代理市场买入强度；真实买入金额/笔数不可公开核验。"),
+            ("platform_public_buy_rank", "public_buy_proxy_rank", "公开买入热度榜", "按天天基金公开热销排行代理市场买入热度；真实买入金额/笔数不可公开核验。"),
             ("etf_net_outflow", "public_sell_proxy_rank", "公开卖出压力榜", "按 ETF 主力净流出代理市场卖出压力；真实卖出金额/笔数不可公开核验。"),
         ]
         for source_type, rank_type, title, description in specs:
             source_group = by_type.get(source_type)
+            effective_source_type = source_type
+            if source_type == "platform_public_buy_rank" and (not source_group or not source_group.get("items")):
+                source_group = by_type.get("etf_net_inflow")
+                effective_source_type = "etf_net_inflow"
+                description = "天天基金公开热销榜不可用时，回退按 ETF 主力净流入代理市场买入强度；真实买入金额/笔数不可公开核验。"
             if not source_group or not source_group.get("items"):
                 continue
             items = []
             for index, item in enumerate(source_group.get("items", [])[:limit], start=1):
                 copied = {**item}
                 copied["rank"] = index
-                copied["recommendation_role"] = "market_buy_evidence" if source_type == "etf_net_inflow" else "market_sell_risk_evidence"
-                copied["proxy_type"] = "public_buy_sell_proxy_from_etf_flow"
+                copied["recommendation_role"] = "market_buy_evidence" if rank_type == "public_buy_proxy_rank" else "market_sell_risk_evidence"
+                if effective_source_type == "platform_public_buy_rank":
+                    copied["recommendation_role"] = "market_buy_evidence"
+                    copied["proxy_type"] = "public_buy_proxy_from_platform_sales_rank"
+                else:
+                    copied["proxy_type"] = "public_buy_sell_proxy_from_etf_flow"
                 copied["limitations"] = [
-                    "该榜单是公开交易资金流代理口径，不披露真实买入/卖出笔数。",
+                    "该榜单是公开平台热销或交易资金流代理口径，不披露用户级真实买入/卖出笔数。",
                     *list(item.get("limitations") or []),
                 ]
                 items.append(copied)
@@ -516,7 +654,7 @@ class FundMarketRankingService:
                 "freshness": source_group.get("freshness") or {},
                 "items": items,
                 "limitations": [
-                    "公开源没有基金级真实申购/赎回或买卖笔数，actual_* 字段保持 null。",
+                    "公开源没有用户级真实申购/赎回或买卖笔数，actual_* 字段保持 null。",
                 ],
             })
         return result
@@ -529,7 +667,7 @@ class FundMarketRankingService:
         limit: int,
     ) -> List[Dict[str, Any]]:
         source_items: List[Tuple[str, Dict[str, Any]]] = []
-        source_rank_types = {"etf_net_inflow", "etf_net_outflow", "etf_turnover_heat", "open_fund_return_rank"}
+        source_rank_types = {"etf_net_inflow", "etf_net_outflow", "etf_turnover_heat", "open_fund_return_rank", "platform_public_buy_rank"}
         for group in groups:
             rank_type = str(group.get("rank_type") or "")
             if rank_type not in source_rank_types:
@@ -733,6 +871,7 @@ class FundMarketRankingService:
         candidates: Dict[str, Dict[str, Any]] = {}
         preferred_rank_types = {
             "industry_product_top10",
+            "platform_public_buy_rank",
             "public_buy_proxy_rank",
             "etf_net_inflow",
             "open_fund_return_rank",
