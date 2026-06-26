@@ -11,6 +11,8 @@ PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 LOG_FILE="logs/codespaces-webui.log"
 PASSWORD_FILE="data/.preview_admin_password"
+PREVIEW_REQUIREMENTS="$VENV_DIR/.codespaces-requirements.txt"
+PREVIEW_SKIP_REQUIREMENTS_REGEX='^[[:space:]]*longbridge([<>=!~[:space:]]|$)'
 
 mkdir -p data logs reports
 
@@ -23,12 +25,19 @@ ensure_python_deps() {
     "$PYTHON_BIN" -m venv "$VENV_DIR"
   fi
 
+  grep -Ev "$PREVIEW_SKIP_REQUIREMENTS_REGEX" requirements.txt > "$PREVIEW_REQUIREMENTS"
+
   local req_hash
-  req_hash="$(sha_file requirements.txt)"
+  req_hash="$(
+    {
+      sha_file requirements.txt
+      printf '%s\n' "$PREVIEW_SKIP_REQUIREMENTS_REGEX"
+    } | shasum -a 256 | awk '{print $1}'
+  )"
   local marker="$VENV_DIR/.codespaces_requirements.sha"
   if [ ! -f "$marker" ] || [ "$(cat "$marker")" != "$req_hash" ]; then
     "$VENV_DIR/bin/python" -m pip install --upgrade pip wheel setuptools
-    "$VENV_DIR/bin/python" -m pip install -r requirements.txt
+    "$VENV_DIR/bin/python" -m pip install -r "$PREVIEW_REQUIREMENTS"
     echo "$req_hash" > "$marker"
   fi
 }
