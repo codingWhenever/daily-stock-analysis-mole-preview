@@ -640,7 +640,7 @@ def _remove_parenthetical(value: str) -> str:
 
 def _share_class_hint(value: str) -> Optional[str]:
     compact = _compact_fund_name(value)
-    match = re.search(r"(?:\)|）)?([A-Z])$", compact, re.IGNORECASE)
+    match = re.search(r"([A-Z])(?:\([^)]*\))*$", compact, re.IGNORECASE)
     if not match:
         return None
     share = match.group(1).upper()
@@ -651,6 +651,9 @@ def _fund_name_search_queries(name: str) -> List[str]:
     compact = _compact_fund_name(name)
     variants = [compact]
     variants.append(_remove_parenthetical(compact))
+    variants.append(compact.replace("(QDII)", "").replace("(人民币)", "人民币"))
+    variants.append(_remove_parenthetical(compact).replace("A人民币", "人民币A").replace("C人民币", "人民币C"))
+    variants.append(compact.replace("(QDII)", "").replace("(人民币)", "人民币").replace("A人民币", "人民币A").replace("C人民币", "人民币C"))
     variants.append(compact.replace("纳指", "纳斯达克"))
     variants.append(_remove_parenthetical(compact.replace("纳指", "纳斯达克")))
     expanded: List[str] = []
@@ -794,7 +797,12 @@ class FundHoldingImportService:
             key=lambda item: (_score_resolved_fund_name(name, item), str(getattr(item, "code", "") or "")),
             reverse=True,
         )
-        return ranked[0], warnings
+        best = ranked[0]
+        share_hint = _share_class_hint(name)
+        best_share_hint = _share_class_hint(str(getattr(best, "name", "") or ""))
+        if share_hint and best_share_hint and share_hint != best_share_hint:
+            return None, warnings + [f"名称反查命中份额类别 {best_share_hint}，与截图 {share_hint} 不一致，请手动确认代码"]
+        return best, warnings
 
     def _resolve_layout_candidates(self, rows: Sequence[Dict[str, Any]], *, source_platform: str) -> List[Dict[str, Any]]:
         resolved: List[Dict[str, Any]] = []
