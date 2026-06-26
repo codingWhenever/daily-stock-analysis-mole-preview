@@ -38,6 +38,30 @@ class MinimalFundProvider:
             return [FundMetadata(code="001603", name="易方达安盈回报混合A", fund_type="混合型")][:limit]
         if "交银中证海外中国互联网指数" in query:
             return [FundMetadata(code="164906", name="交银中证海外中国互联网指数(LOF)A", fund_type="QDII")][:limit]
+        if "易方达中证海外互联网50ETF联接" in query:
+            return [
+                FundMetadata(code="006328", name="易方达中证海外互联网50ETF联接(QDII)C", fund_type="QDII"),
+                FundMetadata(code="006327", name="易方达中证海外互联网50ETF联接(QDII)A", fund_type="QDII"),
+                FundMetadata(code="006329", name="易方达中证海外互联网50ETF联接(QDII)(美元现汇)A", fund_type="QDII"),
+            ][:limit]
+        if "国富大中华精选混合" in query:
+            return [
+                FundMetadata(code="000934", name="国富大中华精选混合", fund_type="QDII"),
+                FundMetadata(code="006370", name="国富大中华精选混合美元", fund_type="QDII"),
+            ][:limit]
+        if "万家新利灵活配置混合" in query:
+            return [FundMetadata(code="519191", name="万家新利灵活配置混合", fund_type="混合型")][:limit]
+        if "中欧价值智选混合" in query:
+            return [
+                FundMetadata(code="004235", name="中欧价值智选混合C", fund_type="混合型"),
+                FundMetadata(code="166019", name="中欧价值智选混合A", fund_type="混合型"),
+            ][:limit]
+        if "兴全沪深300" in query:
+            return [
+                FundMetadata(code="022962", name="兴全沪深300指数增强(LOF)Y", fund_type="指数型"),
+                FundMetadata(code="163407", name="兴全沪深300指数(LOF)A", fund_type="指数型"),
+                FundMetadata(code="007230", name="兴全沪深300指数(LOF)C", fund_type="指数型"),
+            ][:limit]
         return []
 
     def get_nav_records(self, code: str) -> list[dict[str, object]]:
@@ -191,6 +215,61 @@ def test_xueqiu_name_only_snapshot_resolves_rows_from_list_layout() -> None:
     assert all("雪球列表未展示份额" in " ".join(row["warnings"]) for row in rows)
 
 
+def test_xueqiu_name_aliases_resolve_common_public_catalog_differences() -> None:
+    service = _service()
+    text = """
+    原日积月累
+    易方达中证海外中国互联网50ETF联接（QDII）A(人民币)
+    更多数据>
+    1,567.47
+    +12.00
+    +45.00
+    持有金额(元)
+    日收益(06-25)
+    累计收益(元)
+    国富大中华精选混合(QDII)人民币
+    更多数据>
+    9,829.93
+    -11.00
+    +21.00
+    持有金额(元)
+    日收益(06-25)
+    累计收益(元)
+    万家新利混合
+    更多数据>
+    9,386.85
+    +8.00
+    +18.00
+    持有金额(元)
+    日收益(06-25)
+    累计收益(元)
+    中欧价值智选回报A
+    更多数据>
+    6,491.14
+    +7.00
+    +17.00
+    持有金额(元)
+    日收益(06-25)
+    累计收益(元)
+    兴全沪深300指数增强（LOF）A
+    更多数据>
+    539.00
+    +1.00
+    +2.00
+    持有金额(元)
+    日收益(06-25)
+    累计收益(元)
+    """
+
+    preview = service.preview_import(source_platform="xueqiu", ocr_text=text)
+    rows = preview["candidates"]
+
+    assert [row["code"] for row in rows] == ["006327", "000934", "519191", "166019", "163407"]
+    assert rows[0]["name"] == "易方达中证海外互联网50ETF联接(QDII)A"
+    assert rows[1]["name"] == "国富大中华精选混合"
+    assert rows[4]["name"] == "兴全沪深300指数(LOF)A"
+
+
 def test_confirm_import_writes_canonical_snapshot_and_analysis_pool_entry() -> None:
     service = _service()
     preview = service.preview_import(
@@ -222,13 +301,31 @@ def test_same_fund_can_remain_separate_by_platform_but_aggregate_globally() -> N
     service.confirm_import(
         source_platform="alipay",
         holdings=[
-            {"code": "021528", "name": "财通成长优选混合C", "market_value": 1000.0, "units": 100.0}
+            {
+                "code": "021528",
+                "name": "财通成长优选混合C",
+                "market_value": 1000.0,
+                "units": 100.0,
+                "cost_amount": 900.0,
+                "pnl_amount": 100.0,
+                "latest_nav": 10.0,
+                "as_of_date": "2026-06-24",
+            }
         ],
     )
     service.confirm_import(
         source_platform="jd_finance",
         holdings=[
-            {"code": "021528", "name": "财通成长优选混合C", "market_value": 2500.0, "units": 200.0}
+            {
+                "code": "021528",
+                "name": "财通成长优选混合C",
+                "market_value": 2500.0,
+                "units": 200.0,
+                "cost_amount": 2300.0,
+                "pnl_amount": 200.0,
+                "latest_nav": 12.5,
+                "as_of_date": "2026-06-25",
+            }
         ],
     )
 
@@ -239,6 +336,12 @@ def test_same_fund_can_remain_separate_by_platform_but_aggregate_globally() -> N
     assert aggregate["code"] == "021528"
     assert aggregate["market_value"] == 3500.0
     assert aggregate["units"] == 300.0
+    assert aggregate["cost_amount"] == 3200.0
+    assert aggregate["pnl_amount"] == 300.0
+    assert aggregate["pnl_pct"] == 9.38
+    assert aggregate["cost_unit_price"] == 10.6667
+    assert aggregate["latest_nav"] == 12.5
+    assert aggregate["as_of_date"] == "2026-06-25"
     assert len(aggregate["source_breakdown"]) == 2
 
 

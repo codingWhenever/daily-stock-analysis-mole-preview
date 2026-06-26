@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [修复] Web 选基持仓导入助手选图后自动进入识别预览，接入 RapidOCR/ONNXRuntime 本地图片 OCR，并支持京东金融无代码持仓页按名称反查基金代码。
 - [改进] Web 选基持仓导入可在截图收益率校验通过时由市值与持仓收益反推成本，并在已确认持仓区显示精确金额与成本列。
 - [改进] Web 选基持仓导入在截图未展示份额时可用公开单位净值反推份额与净值字段，并在候选中提示净值来源日期。
+- [改进] Web 选基已确认持仓视图补充收益率、成本单价、份额和最新净值，便于后续个人决策层直接读取完整持仓快照。
+- [改进] Web 选基已确认持仓数值展示去掉金额/净值单位后缀，并移除参考日主展示，降低持仓区信息噪音。
+- [修复] Web 选基持仓导入增强雪球无代码列表截图的名称反查，兼容人民币/QDII、简称省略、回报/混合和 A/Y 份额类别差异，避免相似份额类别错配。
 - [改进] 通知报告的分析结果摘要不再展开 AI 决策信号明细，完整信号保留在个股详情和单股报告中。
 - [新功能] #1595 P1.5 新增 Provider Cache Capability Registry，按 provider、api surface、gateway 和 verification status 建模 prompt cache 能力，未知 OpenAI-compatible route 默认 telemetry only。
 - [改进] #1595 P1 新增 prompt cache telemetry / analysis-path hints / diagnostics 最小配置，默认不改变 provider 请求 shape，并复用 LLM usage HMAC secret 做 domain-separated cache hint 派生。

@@ -638,24 +638,52 @@ def _remove_parenthetical(value: str) -> str:
     return re.sub(r"\([^)]*\)", "", value)
 
 
+_FUND_SHARE_CLASS_HINTS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+
 def _share_class_hint(value: str) -> Optional[str]:
     compact = _compact_fund_name(value)
-    match = re.search(r"([A-Z])(?:\([^)]*\))*$", compact, re.IGNORECASE)
+    match = re.search(r"(?:^|[^A-Za-z])([A-Z])(?:\([^)]*\))*$", compact, re.IGNORECASE)
     if not match:
         return None
     share = match.group(1).upper()
-    return share if share in {"A", "B", "C", "D", "E", "F", "I"} else None
+    return share if share in _FUND_SHARE_CLASS_HINTS else None
+
+
+def _currency_stripped_name(value: str) -> str:
+    text = value
+    text = text.replace("(人民币)", "").replace("人民币", "")
+    text = text.replace("(美元现汇)", "").replace("美元现汇", "")
+    text = text.replace("(美元)", "").replace("美元", "")
+    return text
+
+
+def _fund_name_alias_variants(value: str) -> List[str]:
+    variants = [value]
+    variants.append(value.replace("中国互联网50", "互联网50"))
+    variants.append(value.replace("回报", "混合"))
+    variants.append(value.replace("指数增强", "指数"))
+    if value.endswith("混合"):
+        variants.append(f"{value[:-2]}灵活配置混合")
+    return variants
 
 
 def _fund_name_search_queries(name: str) -> List[str]:
     compact = _compact_fund_name(name)
-    variants = [compact]
-    variants.append(_remove_parenthetical(compact))
-    variants.append(compact.replace("(QDII)", "").replace("(人民币)", "人民币"))
-    variants.append(_remove_parenthetical(compact).replace("A人民币", "人民币A").replace("C人民币", "人民币C"))
-    variants.append(compact.replace("(QDII)", "").replace("(人民币)", "人民币").replace("A人民币", "人民币A").replace("C人民币", "人民币C"))
-    variants.append(compact.replace("纳指", "纳斯达克"))
-    variants.append(_remove_parenthetical(compact.replace("纳指", "纳斯达克")))
+    base_variants = [
+        compact,
+        _remove_parenthetical(compact),
+        _currency_stripped_name(compact),
+        _currency_stripped_name(_remove_parenthetical(compact)),
+        compact.replace("(QDII)", "").replace("(人民币)", "人民币"),
+        _remove_parenthetical(compact).replace("A人民币", "人民币A").replace("C人民币", "人民币C"),
+        compact.replace("(QDII)", "").replace("(人民币)", "人民币").replace("A人民币", "人民币A").replace("C人民币", "人民币C"),
+        compact.replace("纳指", "纳斯达克"),
+        _remove_parenthetical(compact.replace("纳指", "纳斯达克")),
+    ]
+    variants: List[str] = []
+    for value in base_variants:
+        variants.extend(_fund_name_alias_variants(value))
     expanded: List[str] = []
     for value in variants:
         if not value:
@@ -697,6 +725,9 @@ def _score_resolved_fund_name(ocr_name: str, metadata: Any) -> float:
         score -= 20
     if "人民币" in candidate_name and "美元" not in ocr_name:
         score += 8
+    for keyword in ("增强", "质量"):
+        if keyword in candidate_name and keyword not in normalized_ocr:
+            score -= 16
     return score
 
 
@@ -797,8 +828,17 @@ class FundHoldingImportService:
             key=lambda item: (_score_resolved_fund_name(name, item), str(getattr(item, "code", "") or "")),
             reverse=True,
         )
-        best = ranked[0]
         share_hint = _share_class_hint(name)
+        best = ranked[0]
+        if share_hint:
+            compatible = [
+                item
+                for item in ranked
+                if (candidate_share := _share_class_hint(str(getattr(item, "name", "") or ""))) is None
+                or candidate_share == share_hint
+            ]
+            if compatible:
+                best = compatible[0]
         best_share_hint = _share_class_hint(str(getattr(best, "name", "") or ""))
         if share_hint and best_share_hint and share_hint != best_share_hint:
             return None, warnings + [f"名称反查命中份额类别 {best_share_hint}，与截图 {share_hint} 不一致，请手动确认代码"]
@@ -990,20 +1030,42 @@ class FundHoldingImportService:
                     "units": 0.0,
                     "cost_amount": 0.0,
                     "pnl_amount": 0.0,
+                    "latest_nav": None,
+                    "pnl_pct": None,
+                    "as_of_date": None,
                     "source_breakdown": [],
                 },
             )
             for field in ("market_value", "units", "cost_amount", "pnl_amount"):
                 if row.get(field) is not None:
                     bucket[field] += float(row[field])
+            if row.get("latest_nav") is not None:
+                bucket["latest_nav"] = row.get("latest_nav")
+            if row.get("as_of_date") and (
+                bucket.get("as_of_date") is None or str(row.get("as_of_date")) > str(bucket.get("as_of_date"))
+            ):
+                bucket["as_of_date"] = row.get("as_of_date")
             bucket["source_breakdown"].append(
                 {
                     "ledger_id": row.get("ledger_id"),
                     "source_platform": row.get("source_platform"),
                     "market_value": row.get("market_value"),
                     "units": row.get("units"),
+                    "cost_amount": row.get("cost_amount"),
+                    "pnl_amount": row.get("pnl_amount"),
+                    "pnl_pct": row.get("pnl_pct"),
+                    "latest_nav": row.get("latest_nav"),
+                    "as_of_date": row.get("as_of_date"),
                 }
             )
+        for bucket in aggregate.values():
+            cost_amount = bucket.get("cost_amount")
+            pnl_amount = bucket.get("pnl_amount")
+            units = bucket.get("units")
+            if cost_amount:
+                bucket["pnl_pct"] = round(float(pnl_amount or 0.0) / float(cost_amount) * 100, 2)
+            if units:
+                bucket["cost_unit_price"] = round(float(cost_amount or 0.0) / float(units), 4)
         return {
             "schema_version": FUND_HOLDING_SNAPSHOT_SCHEMA_VERSION,
             "status": "completed",
