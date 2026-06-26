@@ -278,6 +278,7 @@ def _parse_as_of_date(text: str) -> Optional[str]:
     patterns = [
         r"(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})",
         r"截至\s*(\d{1,2})[-/.月](\d{1,2})",
+        r"\((\d{1,2})[-/.月](\d{1,2})\)",
     ]
     for pattern in patterns:
         match = re.search(pattern, text)
@@ -455,6 +456,106 @@ def _extract_layout_holding_rows(lines: Sequence[OCRTextLine], *, source_platfor
                 "pnl_pct": pnl_pct,
                 "latest_nav": None,
                 "as_of_date": None,
+                "confidence": "low",
+                "source_platform": source_platform,
+                "source_channel": "ocr_preview",
+                "raw_index": len(rows),
+                "warnings": warnings,
+            }
+        )
+    return rows
+
+
+_XUEQIU_TEXT_STOP_KEYWORDS = (
+    "原日积月累",
+    "持有金额",
+    "日收益",
+    "累计收益",
+    "升级投顾",
+    "卖出",
+    "监管要求",
+    "服务已关停",
+    "组合提醒",
+    "有疑问请咨询客服",
+)
+
+
+def _clean_xueqiu_name_line(value: str) -> str:
+    text = (value or "").strip()
+    text = re.sub(r"更多数据.*$", "", text)
+    text = re.sub(r"[>＞]+$", "", text).strip()
+    return text
+
+
+def _is_xueqiu_stop_line(value: str) -> bool:
+    text = (value or "").strip()
+    if not text:
+        return True
+    if _is_plain_ocr_number(text):
+        return True
+    if re.fullmatch(r"\d{1,2}:\d{2}.*", text):
+        return True
+    if re.fullmatch(r"\d{2,3}", text):
+        return True
+    if re.fullmatch(r"\[.*\]", text):
+        return True
+    return any(keyword in text for keyword in _XUEQIU_TEXT_STOP_KEYWORDS)
+
+
+def _extract_xueqiu_text_holding_rows(text: str, *, source_platform: str) -> List[Dict[str, Any]]:
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    if not lines or not any("持有金额" in line for line in lines):
+        return []
+    rows: List[Dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for index, line in enumerate(lines):
+        if "持有金额" not in line:
+            continue
+        if index < 3:
+            continue
+        market_value = _parse_number_token(lines[index - 3])
+        yesterday_pnl = _parse_number_token(lines[index - 2])
+        pnl_amount = _parse_number_token(lines[index - 1])
+        if market_value is None:
+            continue
+
+        name_parts: List[str] = []
+        cursor = index - 4
+        while cursor >= 0:
+            raw_name_line = lines[cursor]
+            cleaned = _clean_xueqiu_name_line(raw_name_line)
+            if _is_xueqiu_stop_line(raw_name_line) and not cleaned:
+                break
+            if _is_xueqiu_stop_line(raw_name_line) and "更多数据" not in raw_name_line:
+                break
+            if cleaned and not _is_xueqiu_stop_line(cleaned):
+                name_parts.insert(0, cleaned)
+            cursor -= 1
+            if len("".join(name_parts)) >= 80:
+                break
+        name = "".join(name_parts).strip()
+        if len(name) < 2 or name in seen_names:
+            continue
+        seen_names.add(name)
+        as_of_date = _parse_as_of_date("\n".join(lines[index : index + 3]))
+        warnings = [
+            "雪球列表未展示基金代码，代码由基金名称反查，请确认",
+            "雪球列表未展示份额、成本和收益率，缺失字段请在候选中手动补充或后续编辑",
+        ]
+        if yesterday_pnl is not None:
+            warnings.append("已识别日收益但当前持仓快照暂不入库该字段")
+        rows.append(
+            {
+                "code": "",
+                "name": name[:80],
+                "units": None,
+                "available_units": None,
+                "market_value": market_value,
+                "cost_amount": None,
+                "pnl_amount": pnl_amount,
+                "pnl_pct": None,
+                "latest_nav": None,
+                "as_of_date": as_of_date,
                 "confidence": "low",
                 "source_platform": source_platform,
                 "source_channel": "ocr_preview",
@@ -749,6 +850,8 @@ class FundHoldingImportService:
                 logger.warning("基金持仓截图预览失败: %s", exc)
                 limitations.append("截图 OCR 失败，请改用手动文本或稍后重试")
         full_text = "\n".join(text_parts)
+        if platform == "xueqiu" and full_text.strip():
+            layout_rows.extend(_extract_xueqiu_text_holding_rows(full_text, source_platform=platform))
         candidates = parse_fund_holding_text(full_text, source_platform=platform)
         for item in candidates:
             self._complete_candidate_from_public_nav(item)

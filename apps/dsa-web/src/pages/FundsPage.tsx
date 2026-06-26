@@ -6,6 +6,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Database,
+  Eye,
+  EyeOff,
   GitBranch,
   Layers3,
   LineChart,
@@ -294,6 +296,16 @@ function formatMoneyAmount(value: number | null | undefined): string {
 function formatCurrency(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '--';
   return `¥${value.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
+}
+
+function formatPrivateCurrency(value: number | null | undefined, visible: boolean): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '--';
+  return visible ? formatCurrency(value) : '••••';
+}
+
+function formatPrivatePct(value: number | null | undefined, visible: boolean): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '--';
+  return visible ? formatPct(value) : '••••';
 }
 
 function formatLargeAmount(value: number | null | undefined): string {
@@ -1614,6 +1626,37 @@ function confidenceVariant(confidence: string): 'default' | 'success' | 'warning
   return 'default';
 }
 
+function suggestedTradeStatusLabel(status: string | null): string {
+  if (status === 'ready') return '可执行区间';
+  if (status === 'watch_only') return '观察';
+  if (status === 'blocked') return '未给金额';
+  return status || '--';
+}
+
+function suggestedTradeVariant(status: string | null): 'default' | 'success' | 'warning' | 'danger' | 'info' {
+  if (status === 'ready') return 'success';
+  if (status === 'watch_only') return 'info';
+  if (status === 'blocked') return 'warning';
+  return 'default';
+}
+
+function scoreStatusVariant(status: string | null): 'default' | 'success' | 'warning' | 'danger' | 'info' {
+  if (status === 'strong' || status === 'usable' || status === 'ok') return 'success';
+  if (status === 'proxy_only' || status === 'partial') return 'info';
+  if (status === 'weak' || status === 'missing') return 'warning';
+  if (status === 'blocked' || status === 'failed') return 'danger';
+  return 'default';
+}
+
+function suggestedAmountText(trade: Record<string, unknown>, visible: boolean): string {
+  const min = readNumber(trade, ['amountMin', 'amount_min']);
+  const max = readNumber(trade, ['amountMax', 'amount_max']);
+  if (min === null && max === null) return '--';
+  if (!visible) return '••••';
+  if (min !== null && max !== null && min !== max) return `${formatCurrency(min)} - ${formatCurrency(max)}`;
+  return formatCurrency(max ?? min);
+}
+
 const PersonalActionsPanel: React.FC<{
   actions: FundPersonalActionsResponse | null;
   isLoading: boolean;
@@ -1624,7 +1667,9 @@ const PersonalActionsPanel: React.FC<{
   const holdingCount = readNumber(summary, ['holdingCount', 'holding_count']);
   const actionableCount = readNumber(summary, ['actionableCount', 'actionable_count']);
   const blockerCount = readNumber(summary, ['blockerCount', 'blocker_count']);
+  const sizedActionCount = readNumber(summary, ['sizedActionCount', 'sized_action_count']);
   const items = actions?.actions || [];
+  const [amountsVisible, setAmountsVisible] = useState(false);
 
   return (
     <section className="rounded-[28px] border border-success/15 bg-success/[0.035] p-3 sm:p-4">
@@ -1643,10 +1688,21 @@ const PersonalActionsPanel: React.FC<{
               这里把确认持仓、账本画像和单品分析合成动作；缺资料时只显示阻塞项。
             </p>
           </div>
-          <Button variant="secondary" size="sm" onClick={onRefresh} isLoading={isLoading} loadingText="刷新中">
-            <RefreshCw className="h-4 w-4" />
-            刷新动作
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setAmountsVisible((visible) => !visible)}
+              aria-pressed={amountsVisible}
+            >
+              {amountsVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {amountsVisible ? '隐藏金额' : '显示金额'}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onRefresh} isLoading={isLoading} loadingText="刷新中">
+              <RefreshCw className="h-4 w-4" />
+              刷新动作
+            </Button>
+          </div>
         </div>
 
         {error ? (
@@ -1663,6 +1719,7 @@ const PersonalActionsPanel: React.FC<{
           <div className="rounded-xl border border-subtle bg-surface-2/55 px-3 py-3">
             <p className="text-[10px] uppercase tracking-[0.14em] text-secondary-text">动作</p>
             <p className="mt-1 text-xl font-semibold text-foreground">{actionableCount ?? '--'}</p>
+            <p className="mt-1 text-[11px] text-muted-text">区间 {sizedActionCount ?? '--'}</p>
           </div>
           <div className="rounded-xl border border-subtle bg-surface-2/55 px-3 py-3">
             <p className="text-[10px] uppercase tracking-[0.14em] text-secondary-text">阻塞</p>
@@ -1677,47 +1734,106 @@ const PersonalActionsPanel: React.FC<{
               正在生成个人动作...
             </div>
           ) : items.length ? (
-            items.slice(0, 8).map((item) => (
-              <div key={`${item.sourcePlatform}-${item.ledgerId}-${item.code}`} className="rounded-2xl border border-subtle bg-surface-2/55 px-3 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-foreground">{item.name || `基金${item.code}`}</p>
-                      <Badge variant="info">{item.code}</Badge>
-                      {item.ledgerName ? <Badge variant="default">{item.ledgerName}</Badge> : null}
+            items.slice(0, 8).map((item) => {
+              const positionContext = item.positionContext || readRecord(item.evidence, ['positionContext', 'position_context']);
+              const suggestedTrade = item.suggestedTrade || readRecord(item.evidence, ['suggestedTrade', 'suggested_trade']);
+              const scoreBreakdown = item.scoreBreakdown || readRecord(item.evidence, ['scoreBreakdown', 'score_breakdown']);
+              const marketContext = item.marketContext || readRecord(item.evidence, ['marketContext', 'market_context']);
+              const calibrationContext = item.calibrationContext || readRecord(item.evidence, ['calibrationContext', 'calibration_context']);
+              const dimensions = readRecordArray(scoreBreakdown, ['dimensions']).slice(0, 4);
+              const tradeStatus = readString(suggestedTrade, ['status']);
+              const currentMarketValue = readNumber(positionContext, ['marketValue', 'market_value']);
+              const currentWeight = readNumber(positionContext, ['ledgerWeightPct', 'ledger_weight_pct']);
+              const targetWeight = readNumber(suggestedTrade, ['targetWeightPct', 'target_weight_pct']);
+              const totalScore = readNumber(scoreBreakdown, ['totalScore', 'total_score']);
+              const tradeReason = readString(suggestedTrade, ['reason']);
+              const marketStatus = readString(marketContext, ['status']);
+              const calibrationStatus = readString(calibrationContext, ['status']);
+              return (
+                <div key={`${item.sourcePlatform}-${item.ledgerId}-${item.code}`} className="rounded-2xl border border-subtle bg-surface-2/55 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-foreground">{item.name || `基金${item.code}`}</p>
+                        <Badge variant="info">{item.code}</Badge>
+                        {item.ledgerName ? <Badge variant="default">{item.ledgerName}</Badge> : null}
+                      </div>
+                      <p className="mt-2 text-xs text-secondary-text">
+                        {item.sourcePlatform ? PERSONAL_SOURCE_LABELS[item.sourcePlatform] || item.sourcePlatform : '未知来源'}
+                        {item.analysisAction ? ` · 单品信号 ${item.analysisAction}` : ''}
+                      </p>
                     </div>
-                    <p className="mt-2 text-xs text-secondary-text">
-                      {item.sourcePlatform ? PERSONAL_SOURCE_LABELS[item.sourcePlatform] || item.sourcePlatform : '未知来源'}
-                      {item.analysisAction ? ` · 单品信号 ${item.analysisAction}` : ''}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <Badge variant={personalActionVariant(item.personalAction)}>{item.actionLabel}</Badge>
-                    <div className="mt-2">
-                      <Badge variant={confidenceVariant(item.confidence)}>{item.confidence}</Badge>
+                    <div className="shrink-0 text-right">
+                      <Badge variant={personalActionVariant(item.personalAction)}>{item.actionLabel}</Badge>
+                      <div className="mt-2 flex flex-col items-end gap-1">
+                        <Badge variant={confidenceVariant(item.confidence)}>{item.confidence}</Badge>
+                        <Badge variant={suggestedTradeVariant(tradeStatus)}>{suggestedTradeStatusLabel(tradeStatus)}</Badge>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {item.blockerLabels.length ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-xl border border-border/50 bg-card/60 px-3 py-2">
+                      <p className="text-[11px] text-muted-text">建议金额</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{suggestedAmountText(suggestedTrade, amountsVisible)}</p>
+                    </div>
+                    <div className="rounded-xl border border-border/50 bg-card/60 px-3 py-2">
+                      <p className="text-[11px] text-muted-text">持仓市值</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{formatPrivateCurrency(currentMarketValue, amountsVisible)}</p>
+                    </div>
+                    <div className="rounded-xl border border-border/50 bg-card/60 px-3 py-2">
+                      <p className="text-[11px] text-muted-text">当前仓位</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{formatPrivatePct(currentWeight, amountsVisible)}</p>
+                    </div>
+                    <div className="rounded-xl border border-border/50 bg-card/60 px-3 py-2">
+                      <p className="text-[11px] text-muted-text">目标仓位</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{formatPrivatePct(targetWeight, amountsVisible)}</p>
+                    </div>
+                  </div>
+
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {item.blockerLabels.slice(0, 3).map((label) => (
-                      <Badge key={label} variant="warning">{label}</Badge>
-                    ))}
+                    <Badge variant={scoreStatusVariant(readString(scoreBreakdown, ['status']))}>总分 {formatNumber(totalScore, 1)}</Badge>
+                    {marketStatus ? <Badge variant={statusVariant(marketStatus)}>市场 {MARKET_STATUS_LABELS[marketStatus] || marketStatus}</Badge> : null}
+                    {calibrationStatus ? <Badge variant="default">回测 {CALIBRATION_STATUS_LABELS[calibrationStatus] || calibrationStatus}</Badge> : null}
+                    {dimensions.map((dimension) => {
+                      const key = readString(dimension, ['key']) || readString(dimension, ['label']) || 'dimension';
+                      const label = readString(dimension, ['label']) || key;
+                      const score = readNumber(dimension, ['score']);
+                      const status = readString(dimension, ['status']);
+                      return (
+                        <Badge key={`${item.code}-${key}`} variant={scoreStatusVariant(status)}>
+                          {label} {formatNumber(score, 0)}
+                        </Badge>
+                      );
+                    })}
                   </div>
-                ) : (
-                  <div className="mt-3 rounded-xl border border-success/20 bg-success/10 px-3 py-2 text-xs text-success">
-                    已具备确认持仓、账本画像和单品分析，可进入动作复核。
-                  </div>
-                )}
 
-                {item.invalidIf.length ? (
-                  <p className="mt-3 line-clamp-2 text-xs leading-5 text-secondary-text">
-                    失效条件：{item.invalidIf.slice(0, 2).join('；')}
-                  </p>
-                ) : null}
-              </div>
-            ))
+                  {tradeReason ? (
+                    <p className="mt-3 rounded-xl border border-border/50 bg-card/50 px-3 py-2 text-xs leading-5 text-secondary-text">
+                      {tradeReason}
+                    </p>
+                  ) : null}
+
+                  {item.blockerLabels.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.blockerLabels.slice(0, 3).map((label) => (
+                        <Badge key={label} variant="warning">{label}</Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-success/20 bg-success/10 px-3 py-2 text-xs text-success">
+                      已具备确认持仓、账本画像和单品分析，可进入动作复核。
+                    </div>
+                  )}
+
+                  {item.invalidIf.length ? (
+                    <p className="mt-3 line-clamp-2 text-xs leading-5 text-secondary-text">
+                      失效条件：{item.invalidIf.slice(0, 2).join('；')}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })
           ) : (
             <div className="rounded-xl border border-dashed border-border/60 bg-card/50 px-3 py-5 text-sm text-secondary-text">
               {actions?.blockerLabels?.length ? actions.blockerLabels.join('；') : '暂无个人动作。'}

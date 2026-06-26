@@ -205,6 +205,12 @@ export type FundPersonalActionItem = {
   actionLabel: string;
   confidence: 'low' | 'medium' | 'high' | string;
   profile: Record<string, unknown>;
+  positionContext?: Record<string, unknown>;
+  calibrationContext?: Record<string, unknown>;
+  marketContext?: Record<string, unknown>;
+  scoreBreakdown?: Record<string, unknown>;
+  suggestedTrade?: Record<string, unknown>;
+  decisionTrace?: string[];
   evidence: Record<string, unknown>;
   blockers: string[];
   blockerLabels: string[];

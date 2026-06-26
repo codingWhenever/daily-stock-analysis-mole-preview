@@ -383,6 +383,12 @@ class FundPersonalActionItem(BaseModel):
     action_label: str
     confidence: str = Field(..., description="low/medium/high")
     profile: Dict[str, Any] = Field(default_factory=dict)
+    position_context: Dict[str, Any] = Field(default_factory=dict)
+    calibration_context: Dict[str, Any] = Field(default_factory=dict)
+    market_context: Dict[str, Any] = Field(default_factory=dict)
+    score_breakdown: Dict[str, Any] = Field(default_factory=dict)
+    suggested_trade: Dict[str, Any] = Field(default_factory=dict)
+    decision_trace: List[str] = Field(default_factory=list)
     evidence: Dict[str, Any] = Field(default_factory=dict)
     blockers: List[str] = Field(default_factory=list)
     blocker_labels: List[str] = Field(default_factory=list)
@@ -391,7 +397,7 @@ class FundPersonalActionItem(BaseModel):
 
 
 class FundPersonalActionsResponse(BaseModel):
-    schema_version: str = Field("fund_personal_actions_v1")
+    schema_version: str = Field("fund_personal_actions_v2")
     status: str = Field(..., description="actionable/partial/blocked")
     fetched_at: str
     summary: Dict[str, Any] = Field(default_factory=dict)
