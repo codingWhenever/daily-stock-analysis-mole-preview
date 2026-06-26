@@ -42,14 +42,40 @@ function maskedNumber(value: number | null | undefined): string {
 
 function exactAmountText(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '--';
-  return `${Number(value).toLocaleString('zh-CN', {
+  return Number(value).toLocaleString('zh-CN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })}元`;
+  });
 }
 
 function displayExactAmount(value: number | null | undefined, visible: boolean): string {
   return visible ? exactAmountText(value) : maskedNumber(value);
+}
+
+function displayPlainNumber(value: number | null | undefined, visible: boolean, digits = 2): string {
+  return visible ? numberText(value, digits) || '--' : maskedNumber(value);
+}
+
+function displayPercent(value: number | null | undefined, visible: boolean): string {
+  if (!visible) return maskedNumber(value);
+  const text = numberText(value, 2);
+  return text ? `${text}%` : '--';
+}
+
+function displayUnitPrice(value: number | null | undefined, visible: boolean): string {
+  if (!visible) return maskedNumber(value);
+  const text = numberText(value, 4);
+  return text || '--';
+}
+
+function costUnitPrice(costAmount: number | null | undefined, units: number | null | undefined): number | null {
+  if (!costAmount || !units || units <= 0) return null;
+  return costAmount / units;
+}
+
+function pnlPctFromAmounts(pnlAmount: number | null | undefined, costAmount: number | null | undefined): number | null {
+  if (pnlAmount === null || pnlAmount === undefined || !costAmount) return null;
+  return (pnlAmount / costAmount) * 100;
 }
 
 function recordText(record: Record<string, unknown>, key: string): string {
@@ -489,6 +515,10 @@ export const FundHoldingImportAssistant: React.FC<{
                 const marketValue = recordNumber(item, 'marketValue');
                 const costAmount = recordNumber(item, 'costAmount');
                 const pnlAmount = recordNumber(item, 'pnlAmount');
+                const units = recordNumber(item, 'units');
+                const pnlPct = recordNumber(item, 'pnlPct') ?? pnlPctFromAmounts(pnlAmount, costAmount);
+                const unitCost = recordNumber(item, 'costUnitPrice') ?? costUnitPrice(costAmount, units);
+                const latestNav = recordNumber(item, 'latestNav');
                 const sourceBreakdown = Array.isArray(item.sourceBreakdown) ? item.sourceBreakdown : [];
                 return (
                   <div key={code} className="rounded-xl border border-subtle bg-card/65 px-3 py-3">
@@ -499,7 +529,7 @@ export const FundHoldingImportAssistant: React.FC<{
                       </div>
                       <Badge variant="default">{sourceBreakdown.length} 源</Badge>
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs xl:grid-cols-4">
                       <div>
                         <p className="text-muted-text">市值</p>
                         <p className="mt-1 font-semibold text-foreground">{displayExactAmount(marketValue, amountsVisible)}</p>
@@ -514,6 +544,24 @@ export const FundHoldingImportAssistant: React.FC<{
                           {displayExactAmount(pnlAmount, amountsVisible)}
                         </p>
                       </div>
+                      <div>
+                        <p className="text-muted-text">收益率</p>
+                        <p className={`mt-1 font-semibold ${pnlPct !== null && pnlPct < 0 ? 'text-danger' : 'text-success'}`}>
+                          {displayPercent(pnlPct, amountsVisible)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-text">成本单价</p>
+                        <p className="mt-1 font-semibold text-foreground">{displayUnitPrice(unitCost, amountsVisible)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-text">份额</p>
+                        <p className="mt-1 font-semibold text-foreground">{displayPlainNumber(units, amountsVisible, 2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-text">最新净值</p>
+                        <p className="mt-1 font-semibold text-foreground">{numberText(latestNav, 4) || '--'}</p>
+                      </div>
                     </div>
                   </div>
                 );
@@ -521,32 +569,42 @@ export const FundHoldingImportAssistant: React.FC<{
             </div>
 
             <div className="mt-3 overflow-x-auto rounded-xl border border-subtle">
-              <div className="min-w-[880px]">
-                <div className="grid grid-cols-[120px_minmax(200px,1fr)_120px_130px_130px_120px_130px] gap-2 bg-surface-2/70 px-3 py-2 text-xs font-semibold text-muted-text">
+              <div className="min-w-[1000px]">
+                <div className="grid grid-cols-[82px_minmax(180px,1fr)_96px_88px_96px_76px_94px_82px_76px] gap-1.5 bg-surface-2/70 px-2 py-2 text-xs font-semibold text-muted-text">
                   <span>来源</span>
                   <span>基金</span>
-                  <span>日期</span>
                   <span>市值</span>
                   <span>成本</span>
-                  <span>份额</span>
                   <span>收益</span>
+                  <span>收益率</span>
+                  <span>成本单价</span>
+                  <span>份额</span>
+                  <span>最新净值</span>
                 </div>
-                {confirmedHoldings.slice(0, 24).map((item: FundHoldingSnapshot) => (
-                  <div
-                    key={`${item.sourcePlatform}-${item.ledgerId}-${item.code}-${item.id || item.updatedAt || item.importedAt}`}
-                    className="grid grid-cols-[120px_minmax(200px,1fr)_120px_130px_130px_120px_130px] gap-2 border-t border-subtle px-3 py-2 text-sm"
-                  >
-                    <span className="truncate text-secondary-text">{sourceLabel(item.sourcePlatform)}</span>
-                    <span className="truncate font-medium text-foreground">{item.name || `基金${item.code}`} · {item.code}</span>
-                    <span className="text-secondary-text">{item.asOfDate || '--'}</span>
-                    <span className="font-semibold text-foreground">{displayExactAmount(item.marketValue, amountsVisible)}</span>
-                    <span className="font-semibold text-foreground">{displayExactAmount(item.costAmount, amountsVisible)}</span>
-                    <span className="text-secondary-text">{amountsVisible ? numberText(item.units) || '--' : maskedNumber(item.units)}</span>
-                    <span className={item.pnlAmount !== null && item.pnlAmount !== undefined && item.pnlAmount < 0 ? 'text-danger' : 'text-success'}>
-                      {displayExactAmount(item.pnlAmount, amountsVisible)}
-                    </span>
-                  </div>
-                ))}
+                {confirmedHoldings.slice(0, 24).map((item: FundHoldingSnapshot) => {
+                  const rowPnlPct = item.pnlPct ?? pnlPctFromAmounts(item.pnlAmount, item.costAmount);
+                  const rowUnitCost = costUnitPrice(item.costAmount, item.units);
+                  return (
+                    <div
+                      key={`${item.sourcePlatform}-${item.ledgerId}-${item.code}-${item.id || item.updatedAt || item.importedAt}`}
+                      className="grid grid-cols-[82px_minmax(180px,1fr)_96px_88px_96px_76px_94px_82px_76px] gap-1.5 border-t border-subtle px-2 py-2 text-xs tabular-nums"
+                    >
+                      <span className="truncate text-secondary-text">{sourceLabel(item.sourcePlatform)}</span>
+                      <span className="truncate font-medium text-foreground">{item.name || `基金${item.code}`} · {item.code}</span>
+                      <span className="font-semibold text-foreground">{displayExactAmount(item.marketValue, amountsVisible)}</span>
+                      <span className="font-semibold text-foreground">{displayExactAmount(item.costAmount, amountsVisible)}</span>
+                      <span className={item.pnlAmount !== null && item.pnlAmount !== undefined && item.pnlAmount < 0 ? 'text-danger' : 'text-success'}>
+                        {displayExactAmount(item.pnlAmount, amountsVisible)}
+                      </span>
+                      <span className={rowPnlPct !== null && rowPnlPct < 0 ? 'text-danger' : 'text-success'}>
+                        {displayPercent(rowPnlPct, amountsVisible)}
+                      </span>
+                      <span className="text-secondary-text">{displayUnitPrice(rowUnitCost, amountsVisible)}</span>
+                      <span className="text-secondary-text">{displayPlainNumber(item.units, amountsVisible, 2)}</span>
+                      <span className="text-secondary-text">{numberText(item.latestNav, 4) || '--'}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
