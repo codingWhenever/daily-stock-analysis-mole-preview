@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [新增] 市场公开榜单接入天天基金移动端公开热销排行，买入热度榜优先使用平台公开销售热度字段，卖出榜继续明确为 ETF 净流出压力代理。
 - [改进] 持仓快照组合摘要新增风险分、风险等级和风险原因，基于当前确认市值、集中度、产品数量、平台集中和字段覆盖率计算。
 - [改进] /funds 个人动作默认只展开 6 条摘要，并将同类比较改为超宽屏并排，减少页面过长和窄列挤压。
+- [改进] /funds 已确认持仓改为“按基金聚合 / 平台明细”单视图切换，默认展示聚合卡片并限制内部滚动，避免聚合卡和明细表同时铺满页面。
 - [改进] 通知报告的分析结果摘要不再展开 AI 决策信号明细，完整信号保留在个股详情和单股报告中。
 - [新功能] #1595 P1.5 新增 Provider Cache Capability Registry，按 provider、api surface、gateway 和 verification status 建模 prompt cache 能力，未知 OpenAI-compatible route 默认 telemetry only。
 - [改进] #1595 P1 新增 prompt cache telemetry / analysis-path hints / diagnostics 最小配置，默认不改变 provider 请求 shape，并复用 LLM usage HMAC secret 做 domain-separated cache hint 派生。

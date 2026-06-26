@@ -189,6 +189,7 @@ export const FundHoldingImportAssistant: React.FC<{
   const [holdingsSnapshot, setHoldingsSnapshot] = useState<FundHoldingListResponse | null>(null);
   const [holdingsLoading, setHoldingsLoading] = useState(true);
   const [amountsVisible, setAmountsVisible] = useState(false);
+  const [confirmedView, setConfirmedView] = useState<'aggregate' | 'detail'>('aggregate');
   const [previewing, setPreviewing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<ParsedApiError | null>(null);
@@ -583,17 +584,38 @@ export const FundHoldingImportAssistant: React.FC<{
             </div>
             <p className="mt-2 text-sm text-secondary-text">全部视图按基金代码聚合，各平台账本明细保持分开。</p>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => void loadHoldings()}
-            isLoading={holdingsLoading}
-            loadingText="刷新中"
-          >
-            <RefreshCw className="h-4 w-4" />
-            刷新持仓
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-xl border border-subtle bg-card/60 p-1">
+              {[
+                ['aggregate', '按基金聚合'],
+                ['detail', '平台明细'],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setConfirmedView(value as 'aggregate' | 'detail')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    confirmedView === value
+                      ? 'bg-cyan/15 text-cyan'
+                      : 'text-secondary-text hover:bg-hover/60 hover:text-foreground'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadHoldings()}
+              isLoading={holdingsLoading}
+              loadingText="刷新中"
+            >
+              <RefreshCw className="h-4 w-4" />
+              刷新持仓
+            </Button>
+          </div>
         </div>
 
         {holdingsLoading && !holdingsSnapshot ? (
@@ -674,105 +696,112 @@ export const FundHoldingImportAssistant: React.FC<{
               </div>
             ) : null}
 
-            <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
-              {aggregatedHoldings.slice(0, 8).map((item) => {
-                const code = recordText(item, 'code');
-                const name = recordText(item, 'name');
-                const marketValue = recordNumber(item, 'marketValue');
-                const costAmount = recordNumber(item, 'costAmount');
-                const pnlAmount = recordNumber(item, 'pnlAmount');
-                const units = recordNumber(item, 'units');
-                const pnlPct = recordNumber(item, 'pnlPct') ?? pnlPctFromAmounts(pnlAmount, costAmount);
-                const unitCost = recordNumber(item, 'costUnitPrice') ?? costUnitPrice(costAmount, units);
-                const latestNav = recordNumber(item, 'latestNav');
-                const sourceBreakdown = Array.isArray(item.sourceBreakdown) ? item.sourceBreakdown : [];
-                return (
-                  <div key={code} className="rounded-xl border border-subtle bg-card/65 px-3 py-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">{name || `基金${code}`}</p>
-                        <p className="mt-1 text-xs text-muted-text">{code}</p>
+            {confirmedView === 'aggregate' ? (
+              <div className="max-h-[560px] overflow-y-auto pr-1">
+                <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
+                  {aggregatedHoldings.map((item) => {
+                    const code = recordText(item, 'code');
+                    const name = recordText(item, 'name');
+                    const marketValue = recordNumber(item, 'marketValue');
+                    const costAmount = recordNumber(item, 'costAmount');
+                    const pnlAmount = recordNumber(item, 'pnlAmount');
+                    const units = recordNumber(item, 'units');
+                    const pnlPct = recordNumber(item, 'pnlPct') ?? pnlPctFromAmounts(pnlAmount, costAmount);
+                    const unitCost = recordNumber(item, 'costUnitPrice') ?? costUnitPrice(costAmount, units);
+                    const latestNav = recordNumber(item, 'latestNav');
+                    const sourceBreakdown = Array.isArray(item.sourceBreakdown) ? item.sourceBreakdown : [];
+                    return (
+                      <div key={code} className="rounded-xl border border-subtle bg-card/65 px-3 py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-foreground">{name || `基金${code}`}</p>
+                            <p className="mt-1 text-xs text-muted-text">{code}</p>
+                          </div>
+                          <Badge variant="default">{sourceBreakdown.length} 源</Badge>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs xl:grid-cols-4">
+                          <div>
+                            <p className="text-muted-text">市值</p>
+                            <p className="mt-1 font-semibold text-foreground">{displayExactAmount(marketValue, amountsVisible)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-text">成本</p>
+                            <p className="mt-1 font-semibold text-foreground">{displayExactAmount(costAmount, amountsVisible)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-text">盈亏</p>
+                            <p className={`mt-1 font-semibold ${pnlAmount !== null && pnlAmount < 0 ? 'text-danger' : 'text-success'}`}>
+                              {displayExactAmount(pnlAmount, amountsVisible)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-text">收益率</p>
+                            <p className={`mt-1 font-semibold ${pnlPct !== null && pnlPct < 0 ? 'text-danger' : 'text-success'}`}>
+                              {displayPercent(pnlPct, amountsVisible)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-text">成本单价</p>
+                            <p className="mt-1 font-semibold text-foreground">{displayUnitPrice(unitCost, amountsVisible)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-text">份额</p>
+                            <p className="mt-1 font-semibold text-foreground">{displayPlainNumber(units, amountsVisible, 2)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-text">最新净值</p>
+                            <p className="mt-1 font-semibold text-foreground">{numberText(latestNav, 4) || '--'}</p>
+                          </div>
+                        </div>
                       </div>
-                      <Badge variant="default">{sourceBreakdown.length} 源</Badge>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs xl:grid-cols-4">
-                      <div>
-                        <p className="text-muted-text">市值</p>
-                        <p className="mt-1 font-semibold text-foreground">{displayExactAmount(marketValue, amountsVisible)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-text">成本</p>
-                        <p className="mt-1 font-semibold text-foreground">{displayExactAmount(costAmount, amountsVisible)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-text">盈亏</p>
-                        <p className={`mt-1 font-semibold ${pnlAmount !== null && pnlAmount < 0 ? 'text-danger' : 'text-success'}`}>
-                          {displayExactAmount(pnlAmount, amountsVisible)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-text">收益率</p>
-                        <p className={`mt-1 font-semibold ${pnlPct !== null && pnlPct < 0 ? 'text-danger' : 'text-success'}`}>
-                          {displayPercent(pnlPct, amountsVisible)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-text">成本单价</p>
-                        <p className="mt-1 font-semibold text-foreground">{displayUnitPrice(unitCost, amountsVisible)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-text">份额</p>
-                        <p className="mt-1 font-semibold text-foreground">{displayPlainNumber(units, amountsVisible, 2)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-text">最新净值</p>
-                        <p className="mt-1 font-semibold text-foreground">{numberText(latestNav, 4) || '--'}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-3 overflow-x-auto rounded-xl border border-subtle">
-              <div className="min-w-[1000px]">
-                <div className="grid grid-cols-[82px_minmax(180px,1fr)_96px_88px_96px_76px_94px_82px_76px] gap-1.5 bg-surface-2/70 px-2 py-2 text-xs font-semibold text-muted-text">
-                  <span>来源</span>
-                  <span>基金</span>
-                  <span>市值</span>
-                  <span>成本</span>
-                  <span>收益</span>
-                  <span>收益率</span>
-                  <span>成本单价</span>
-                  <span>份额</span>
-                  <span>最新净值</span>
+                    );
+                  })}
                 </div>
-                {confirmedHoldings.slice(0, 24).map((item: FundHoldingSnapshot) => {
-                  const rowPnlPct = item.pnlPct ?? pnlPctFromAmounts(item.pnlAmount, item.costAmount);
-                  const rowUnitCost = costUnitPrice(item.costAmount, item.units);
-                  return (
-                    <div
-                      key={`${item.sourcePlatform}-${item.ledgerId}-${item.code}-${item.id || item.updatedAt || item.importedAt}`}
-                      className="grid grid-cols-[82px_minmax(180px,1fr)_96px_88px_96px_76px_94px_82px_76px] gap-1.5 border-t border-subtle px-2 py-2 text-xs tabular-nums"
-                    >
-                      <span className="truncate text-secondary-text">{sourceLabel(item.sourcePlatform)}</span>
-                      <span className="truncate font-medium text-foreground">{item.name || `基金${item.code}`} · {item.code}</span>
-                      <span className="font-semibold text-foreground">{displayExactAmount(item.marketValue, amountsVisible)}</span>
-                      <span className="font-semibold text-foreground">{displayExactAmount(item.costAmount, amountsVisible)}</span>
-                      <span className={item.pnlAmount !== null && item.pnlAmount !== undefined && item.pnlAmount < 0 ? 'text-danger' : 'text-success'}>
-                        {displayExactAmount(item.pnlAmount, amountsVisible)}
-                      </span>
-                      <span className={rowPnlPct !== null && rowPnlPct < 0 ? 'text-danger' : 'text-success'}>
-                        {displayPercent(rowPnlPct, amountsVisible)}
-                      </span>
-                      <span className="text-secondary-text">{displayUnitPrice(rowUnitCost, amountsVisible)}</span>
-                      <span className="text-secondary-text">{displayPlainNumber(item.units, amountsVisible, 2)}</span>
-                      <span className="text-secondary-text">{numberText(item.latestNav, 4) || '--'}</span>
-                    </div>
-                  );
-                })}
               </div>
-            </div>
+            ) : (
+              <>
+                <p className="mb-2 text-xs text-muted-text sm:hidden">平台明细字段较多，可左右滑动查看。</p>
+                <div className="max-h-[560px] overflow-auto rounded-xl border border-subtle">
+                  <div className="min-w-[1000px]">
+                    <div className="sticky top-0 z-10 grid grid-cols-[82px_minmax(180px,1fr)_96px_88px_96px_76px_94px_82px_76px] gap-1.5 bg-surface-2 px-2 py-2 text-xs font-semibold text-muted-text">
+                      <span>来源</span>
+                      <span>基金</span>
+                      <span>市值</span>
+                      <span>成本</span>
+                      <span>收益</span>
+                      <span>收益率</span>
+                      <span>成本单价</span>
+                      <span>份额</span>
+                      <span>最新净值</span>
+                    </div>
+                    {confirmedHoldings.map((item: FundHoldingSnapshot) => {
+                      const rowPnlPct = item.pnlPct ?? pnlPctFromAmounts(item.pnlAmount, item.costAmount);
+                      const rowUnitCost = costUnitPrice(item.costAmount, item.units);
+                      return (
+                        <div
+                          key={`${item.sourcePlatform}-${item.ledgerId}-${item.code}-${item.id || item.updatedAt || item.importedAt}`}
+                          className="grid grid-cols-[82px_minmax(180px,1fr)_96px_88px_96px_76px_94px_82px_76px] gap-1.5 border-t border-subtle px-2 py-2 text-xs tabular-nums"
+                        >
+                          <span className="truncate text-secondary-text">{sourceLabel(item.sourcePlatform)}</span>
+                          <span className="truncate font-medium text-foreground">{item.name || `基金${item.code}`} · {item.code}</span>
+                          <span className="font-semibold text-foreground">{displayExactAmount(item.marketValue, amountsVisible)}</span>
+                          <span className="font-semibold text-foreground">{displayExactAmount(item.costAmount, amountsVisible)}</span>
+                          <span className={item.pnlAmount !== null && item.pnlAmount !== undefined && item.pnlAmount < 0 ? 'text-danger' : 'text-success'}>
+                            {displayExactAmount(item.pnlAmount, amountsVisible)}
+                          </span>
+                          <span className={rowPnlPct !== null && rowPnlPct < 0 ? 'text-danger' : 'text-success'}>
+                            {displayPercent(rowPnlPct, amountsVisible)}
+                          </span>
+                          <span className="text-secondary-text">{displayUnitPrice(rowUnitCost, amountsVisible)}</span>
+                          <span className="text-secondary-text">{displayPlainNumber(item.units, amountsVisible, 2)}</span>
+                          <span className="text-secondary-text">{numberText(item.latestNav, 4) || '--'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
 
             {holdingsSnapshot?.limitations?.length ? (
               <InlineAlert className="mt-3" variant="info" message={holdingsSnapshot.limitations[0]} />
