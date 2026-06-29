@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   GitBranch,
+  Info,
   Layers3,
   LineChart,
   ListPlus,
@@ -34,7 +35,7 @@ import {
   type FundSearchItem,
 } from '../api/funds';
 import { getParsedApiError, type ParsedApiError } from '../api/error';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, Input, PageHeader, Select, StatCard } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, Input, PageHeader, Select, StatCard, Tooltip } from '../components/common';
 import { FundHoldingImportAssistant } from '../components/funds/FundHoldingImportAssistant';
 import { formatDate, formatDateTime } from '../utils/format';
 
@@ -1318,6 +1319,59 @@ function recommendationEvidenceText(evidence: Record<string, unknown>): string {
   return prefix;
 }
 
+const ScoreLegend: React.FC<{ title: string; lines: string[] }> = ({ title, lines }) => (
+  <Tooltip
+    focusable
+    content={(
+      <div className="space-y-1 text-left">
+        <p className="font-semibold text-foreground">{title}</p>
+        {lines.map((line) => (
+          <p key={line} className="text-secondary-text">{line}</p>
+        ))}
+      </div>
+    )}
+    contentClassName="max-w-[20rem]"
+  >
+    <span className="inline-flex cursor-help items-center gap-1 rounded-full border border-subtle bg-card/70 px-2 py-1 text-[11px] font-medium text-secondary-text transition-colors hover:text-foreground">
+      <Info className="h-3.5 w-3.5" />
+      评分说明
+    </span>
+  </Tooltip>
+);
+
+const DATA_STATE_LEGEND: Array<{ label: string; desc: string; dot: string }> = [
+  { label: '已实接', desc: '真实公开数据直出（净值、公开榜单字段等）', dot: 'bg-success' },
+  { label: '计算中 / 代理', desc: '本地估算或公开代理口径近似，非平台真实申赎/资金流', dot: 'bg-cyan' },
+  { label: '待接入', desc: '尚未接入或公开源不可用，系统不补造数据', dot: 'bg-muted-text' },
+  { label: '需用户确认', desc: '依赖用户上传并确认的持仓或账本画像', dot: 'bg-warning' },
+];
+
+const DataStateLegend: React.FC = () => (
+  <Tooltip
+    focusable
+    contentClassName="max-w-[22rem]"
+    content={(
+      <div className="space-y-1.5 text-left">
+        <p className="font-semibold text-foreground">数据状态口径</p>
+        {DATA_STATE_LEGEND.map((state) => (
+          <div key={state.label} className="flex items-start gap-2">
+            <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${state.dot}`} />
+            <p className="text-secondary-text">
+              <span className="font-medium text-foreground">{state.label}</span> · {state.desc}
+            </p>
+          </div>
+        ))}
+        <p className="pt-1 text-muted-text">页面所有状态徽章统一遵循此口径；缺口不会被显示为已接入。</p>
+      </div>
+    )}
+  >
+    <span className="inline-flex cursor-help items-center gap-1 rounded-full border border-subtle bg-card/70 px-2 py-1 text-[11px] font-medium text-secondary-text transition-colors hover:text-foreground">
+      <Info className="h-3.5 w-3.5" />
+      数据状态
+    </span>
+  </Tooltip>
+);
+
 const RecommendationEvidenceCard: React.FC<{
   candidate: FundRecommendationCandidate;
   index: number;
@@ -1336,6 +1390,8 @@ const RecommendationEvidenceCard: React.FC<{
   const latestActionLabel = candidate.latestAnalysis?.actionLabel || null;
   const evidence = candidate.marketEvidence || [];
   const riskFlags = candidate.riskFlags || [];
+  const [showDetail, setShowDetail] = useState(false);
+  const hasDetail = riskFlags.length > 0 || candidate.invalidIf.length > 0 || Boolean(readinessStatus) || Boolean(candidate.latestAnalysis);
 
   return (
     <div className="rounded-2xl border border-subtle bg-surface-2/55 px-3 py-3">
@@ -1384,37 +1440,53 @@ const RecommendationEvidenceCard: React.FC<{
         )}
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <div className="rounded-xl border border-subtle bg-card/50 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-muted-text">回测准备</p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {BACKTEST_READINESS_LABELS[readinessStatus || ''] || readinessStatus || '--'}
-          </p>
-          <p className="mt-1 text-xs text-secondary-text">NAV 样本 {navSampleCount ?? '--'}</p>
-        </div>
-        <div className="rounded-xl border border-subtle bg-card/50 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-muted-text">单品画像</p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {latestActionLabel || (candidate.latestAnalysis ? '已有分析' : '待分析')}
-          </p>
-          <p className="mt-1 text-xs text-secondary-text">{candidate.dataQualitySummary || '--'}</p>
-        </div>
-      </div>
+      {hasDetail ? (
+        <button
+          type="button"
+          onClick={() => setShowDetail((open) => !open)}
+          aria-expanded={showDetail}
+          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-secondary-text transition-colors hover:text-foreground"
+        >
+          {showDetail ? '收起证据与边界' : '查看证据与边界'}
+          <span className={`transition-transform ${showDetail ? 'rotate-180' : ''}`}>⌄</span>
+        </button>
+      ) : null}
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {riskFlags.length ? riskFlags.slice(0, 3).map((flag) => (
-          <Badge key={flag} variant={flag.includes('insufficient') || flag.includes('not_') ? 'warning' : 'default'}>
-            {RECOMMENDATION_RISK_LABELS[flag] || flag}
-          </Badge>
-        )) : (
-          <Badge variant="success">暂无显著风险标记</Badge>
-        )}
-      </div>
+      {showDetail ? (
+        <>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="rounded-xl border border-subtle bg-card/50 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-text">回测准备</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {BACKTEST_READINESS_LABELS[readinessStatus || ''] || readinessStatus || '--'}
+              </p>
+              <p className="mt-1 text-xs text-secondary-text">NAV 样本 {navSampleCount ?? '--'}</p>
+            </div>
+            <div className="rounded-xl border border-subtle bg-card/50 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-text">单品画像</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {latestActionLabel || (candidate.latestAnalysis ? '已有分析' : '待分析')}
+              </p>
+              <p className="mt-1 text-xs text-secondary-text">{candidate.dataQualitySummary || '--'}</p>
+            </div>
+          </div>
 
-      {candidate.invalidIf.length ? (
-        <p className="mt-3 line-clamp-2 text-xs leading-5 text-secondary-text">
-          失效条件：{candidate.invalidIf.slice(0, 2).join('；')}
-        </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {riskFlags.length ? riskFlags.slice(0, 3).map((flag) => (
+              <Badge key={flag} variant={flag.includes('insufficient') || flag.includes('not_') ? 'warning' : 'default'}>
+                {RECOMMENDATION_RISK_LABELS[flag] || flag}
+              </Badge>
+            )) : (
+              <Badge variant="success">暂无显著风险标记</Badge>
+            )}
+          </div>
+
+          {candidate.invalidIf.length ? (
+            <p className="mt-3 text-xs leading-5 text-secondary-text">
+              失效条件：{candidate.invalidIf.slice(0, 2).join('；')}
+            </p>
+          ) : null}
+        </>
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1596,7 +1668,17 @@ const MarketRankingWorkbench: React.FC<{
               候选来自公开榜单，并叠加单品画像和回测准备度；这里仍不输出个人买卖动作。
             </p>
           </div>
-          <TrendingUp className="h-5 w-5 shrink-0 text-success" />
+          <div className="flex shrink-0 items-center gap-2">
+            <ScoreLegend
+              title="Score 口径"
+              lines={[
+                'Score = 公开榜单证据强度（资金流 / 成交热度 / 收益排名）',
+                '叠加单品画像与回测准备度后排序；分值越高越值得优先观察。',
+                '仅为市场级排序，不含个人持仓与画像，不等于买入建议。',
+              ]}
+            />
+            <TrendingUp className="h-5 w-5 text-success" />
+          </div>
         </div>
 
         {recommendationError ? (
@@ -1748,6 +1830,12 @@ const PersonalActionsPanel: React.FC<{
   const visibleActionItems = items.slice(0, 6);
   const hiddenActionCount = Math.max(items.length - visibleActionItems.length, 0);
   const [amountsVisible, setAmountsVisible] = useState(false);
+  const [showBlockedDetail, setShowBlockedDetail] = useState(false);
+  const noActionable = !isLoading && Boolean(actions) && (actionableCount ?? 0) === 0;
+  const blockerReasons = Array.from(new Set([
+    ...items.flatMap((item) => item.blockerLabels || []),
+    ...(actions?.blockerLabels || []),
+  ])).slice(0, 4);
 
   return (
     <section className="rounded-[28px] border border-success/15 bg-success/[0.035] p-3 sm:p-4">
@@ -1767,6 +1855,14 @@ const PersonalActionsPanel: React.FC<{
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <ScoreLegend
+              title="总分口径"
+              lines={[
+                '总分 = 市场上下文、仓位约束、用户画像、单品分析等子项加权。',
+                '各子项分值越高越偏积极；任一硬约束未达标会进入阻塞项。',
+                '需确认持仓 + 账本画像 + 单品分析齐备，才会给出金额区间。',
+              ]}
+            />
             <Button
               variant="secondary"
               size="sm"
@@ -1812,6 +1908,41 @@ const PersonalActionsPanel: React.FC<{
               正在生成个人动作...
             </div>
           ) : items.length ? (
+            <>
+            {noActionable ? (
+              <div className="rounded-2xl border border-warning/20 bg-warning/10 px-4 py-4 xl:col-span-2">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">当前没有可执行的个人动作</p>
+                    <p className="mt-1 text-xs leading-5 text-secondary-text">
+                      已读取 {holdingCount ?? 0} 条持仓，但单品分析、账本画像或可用资金未达可输出条件，系统只跟踪不下动作。
+                    </p>
+                    {blockerReasons.length ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {blockerReasons.map((reason) => (
+                          <Badge key={reason} variant="warning">{reason}</Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="mt-3 space-y-1 text-xs text-secondary-text">
+                      <p>下一步：在下方「基金池」对相关基金点「刷新分析」补齐单品画像；</p>
+                      <p>在「账本」完善风险目标、投资期限等账户画像；确认最新持仓后再回到这里。</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowBlockedDetail((open) => !open)}
+                      aria-expanded={showBlockedDetail}
+                      className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-secondary-text transition-colors hover:text-foreground"
+                    >
+                      {showBlockedDetail ? '收起阻塞明细' : `查看 ${items.length} 条阻塞明细`}
+                      <span className={`transition-transform ${showBlockedDetail ? 'rotate-180' : ''}`}>⌄</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {(!noActionable || showBlockedDetail) ? (
             <>
             {visibleActionItems.map((item) => {
               const positionContext = item.positionContext || readRecord(item.evidence, ['positionContext', 'position_context']);
@@ -1919,9 +2050,11 @@ const PersonalActionsPanel: React.FC<{
               </div>
             ) : null}
             </>
+            ) : null}
+            </>
           ) : (
-            <div className="rounded-xl border border-dashed border-border/60 bg-card/50 px-3 py-5 text-sm text-secondary-text">
-              {actions?.blockerLabels?.length ? actions.blockerLabels.join('；') : '暂无个人动作。'}
+            <div className="rounded-xl border border-dashed border-border/60 bg-card/50 px-3 py-5 text-sm text-secondary-text xl:col-span-2">
+              {actions?.blockerLabels?.length ? actions.blockerLabels.join('；') : '暂无个人动作。导入并确认持仓、完善账本画像后，这里会给出加减仓建议或阻塞原因。'}
             </div>
           )}
         </div>
@@ -1944,12 +2077,16 @@ const FundLedgerSwitcher: React.FC<{
   newLedgerName: string;
   newLedgerColor: string;
   creatingLedger: boolean;
+  ledgerNameDraft: string;
+  ledgerColorDraft: string;
   profileDraft: FundLedgerProfileDraft;
   savingProfile: boolean;
   onSelect: (ledgerId: number | 'all') => void;
   onNameChange: (value: string) => void;
   onColorChange: (value: string) => void;
   onCreate: () => void;
+  onLedgerNameChange: (value: string) => void;
+  onLedgerColorChange: (value: string) => void;
   onProfileChange: (field: keyof FundLedgerProfileDraft, value: string) => void;
   onSaveProfile: () => void;
 }> = ({
@@ -1960,12 +2097,16 @@ const FundLedgerSwitcher: React.FC<{
   newLedgerName,
   newLedgerColor,
   creatingLedger,
+  ledgerNameDraft,
+  ledgerColorDraft,
   profileDraft,
   savingProfile,
   onSelect,
   onNameChange,
   onColorChange,
   onCreate,
+  onLedgerNameChange,
+  onLedgerColorChange,
   onProfileChange,
   onSaveProfile,
 }) => {
@@ -2092,12 +2233,38 @@ const FundLedgerSwitcher: React.FC<{
             className="w-full lg:w-auto"
           >
             <CheckCircle2 className="h-4 w-4" />
-            保存画像
+            保存账本
           </Button>
         </div>
 
         {selectedLedger ? (
           <div className="mt-4 grid gap-3 xl:grid-cols-3">
+            <div className="rounded-xl border border-subtle bg-card/45 px-3 py-3 xl:col-span-3">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <Input
+                  label="账本名称"
+                  value={ledgerNameDraft}
+                  maxLength={20}
+                  onChange={(event) => onLedgerNameChange(event.target.value)}
+                  placeholder="例如 支付宝、京东金融、长期定投"
+                />
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-medium text-muted-text">主题色</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {LEDGER_THEME_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        aria-label={`选择账本主题色 ${color}`}
+                        onClick={() => onLedgerColorChange(color)}
+                        className={`h-7 w-7 rounded-full border transition-all ${ledgerColorDraft === color ? 'scale-110 border-foreground' : 'border-border/60'}`}
+                        style={{ backgroundColor: color, boxShadow: ledgerColorDraft === color ? `0 0 0 4px ${hexToRgba(color, 0.18)}` : undefined }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
             <Select
               label="账户类型"
               value={profileDraft.accountType}
@@ -2924,6 +3091,52 @@ const FundPoolWorkspace: React.FC<{
   );
 };
 
+type FundsSectionMeta = { id: string; label: string; icon: React.ReactNode };
+
+const FUNDS_SECTIONS: FundsSectionMeta[] = [
+  { id: 'funds-market', label: '市场榜单', icon: <TrendingUp className="h-3.5 w-3.5" /> },
+  { id: 'funds-search', label: '搜基', icon: <SearchIcon className="h-3.5 w-3.5" /> },
+  { id: 'funds-holdings', label: '持仓', icon: <Database className="h-3.5 w-3.5" /> },
+  { id: 'funds-actions', label: '个人动作', icon: <Sparkles className="h-3.5 w-3.5" /> },
+  { id: 'funds-ledger', label: '账本', icon: <Layers3 className="h-3.5 w-3.5" /> },
+  { id: 'funds-pool', label: '基金池', icon: <LineChart className="h-3.5 w-3.5" /> },
+];
+
+const FundsQuickNav: React.FC<{ activeId: string }> = ({ activeId }) => {
+  const handleJump = useCallback((id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  return (
+    <nav
+      aria-label="选基分区导航"
+      className="sticky top-16 z-20 -mx-4 border-b border-subtle bg-background/85 px-4 py-2 backdrop-blur-xl md:-mx-6 md:px-6 lg:top-2 lg:mx-0 lg:rounded-2xl lg:border lg:px-3"
+    >
+      <div className="flex items-center gap-2 overflow-x-auto">
+        {FUNDS_SECTIONS.map((section) => {
+          const active = section.id === activeId;
+          return (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => handleJump(section.id)}
+              aria-current={active ? 'true' : undefined}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                active
+                  ? 'border-cyan/50 bg-cyan/12 text-cyan'
+                  : 'border-subtle bg-card/70 text-secondary-text hover:bg-hover/60 hover:text-foreground'
+              }`}
+            >
+              {section.icon}
+              {section.label}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+};
+
 const FundsPage: React.FC = () => {
   const [items, setItems] = useState<FundPoolItem[]>([]);
   const [ledgers, setLedgers] = useState<FundLedger[]>([]);
@@ -2932,6 +3145,8 @@ const FundsPage: React.FC = () => {
   const [newLedgerName, setNewLedgerName] = useState('');
   const [newLedgerColor, setNewLedgerColor] = useState(LEDGER_THEME_COLORS[1]);
   const [creatingLedger, setCreatingLedger] = useState(false);
+  const [ledgerNameDraft, setLedgerNameDraft] = useState('');
+  const [ledgerColorDraft, setLedgerColorDraft] = useState(LEDGER_THEME_COLORS[0]);
   const [ledgerProfileDraft, setLedgerProfileDraft] = useState<FundLedgerProfileDraft>(EMPTY_LEDGER_PROFILE_DRAFT);
   const [savingLedgerProfile, setSavingLedgerProfile] = useState(false);
   const [assigningLedgerCode, setAssigningLedgerCode] = useState<string | null>(null);
@@ -2956,9 +3171,28 @@ const FundsPage: React.FC = () => {
   const [selectedRankType, setSelectedRankType] = useState<string | null>('etf_net_inflow');
   const [backtestsByCode, setBacktestsByCode] = useState<Record<string, FundBacktestResponse>>({});
   const [backtestingCode, setBacktestingCode] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<string>(FUNDS_SECTIONS[0].id);
 
   useEffect(() => {
     document.title = '选基 - DSA';
+  }, []);
+
+  useEffect(() => {
+    const sections = FUNDS_SECTIONS
+      .map((section) => document.getElementById(section.id))
+      .filter((element): element is HTMLElement => Boolean(element));
+    if (!sections.length || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (visible.length) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: '-25% 0px -60% 0px', threshold: [0, 0.2, 0.5, 1] },
+    );
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
   }, []);
 
   const loadPool = useCallback(async () => {
@@ -3058,9 +3292,13 @@ const FundsPage: React.FC = () => {
 
   useEffect(() => {
     if (!selectedLedger) {
+      setLedgerNameDraft('');
+      setLedgerColorDraft(LEDGER_THEME_COLORS[0]);
       setLedgerProfileDraft(EMPTY_LEDGER_PROFILE_DRAFT);
       return;
     }
+    setLedgerNameDraft(selectedLedger.name || '');
+    setLedgerColorDraft(selectedLedger.color || LEDGER_THEME_COLORS[0]);
     setLedgerProfileDraft({
       accountType: selectedLedger.accountType || '',
       purpose: selectedLedger.purpose || '',
@@ -3255,9 +3493,22 @@ const FundsPage: React.FC = () => {
 
   const handleSaveLedgerProfile = async () => {
     if (!selectedLedger) return;
+    const ledgerName = ledgerNameDraft.trim();
+    if (!ledgerName) {
+      setError({
+        title: '请输入账本名称',
+        message: '账本名称不能为空，例如 支付宝、京东金融、长期定投。',
+        rawMessage: '',
+        status: 400,
+        category: 'http_error',
+      });
+      return;
+    }
     setSavingLedgerProfile(true);
     try {
       await fundsApi.updateLedgerProfile(selectedLedger.id, {
+        name: ledgerName,
+        color: ledgerColorDraft || selectedLedger.color,
         accountType: ledgerProfileDraft.accountType || null,
         purpose: ledgerProfileDraft.purpose || null,
         riskTarget: ledgerProfileDraft.riskTarget || null,
@@ -3314,19 +3565,25 @@ const FundsPage: React.FC = () => {
         title="选基决策工作台"
         description="先汇总公开市场榜单和荐基候选，再把产品加入基金池做画像、回测和后续个人持仓动作。"
         actions={(
-          <Button
-            variant="secondary"
-            onClick={() => void handleRefreshPool()}
-            isLoading={refreshingPool}
-            loadingText="刷新中"
-            disabled={!items.length}
-          >
-            <RefreshCw className="h-4 w-4" />
-            刷新基金池
-          </Button>
+          <div className="flex items-center gap-2">
+            <DataStateLegend />
+            <Button
+              variant="secondary"
+              onClick={() => void handleRefreshPool()}
+              isLoading={refreshingPool}
+              loadingText="刷新中"
+              disabled={!items.length}
+            >
+              <RefreshCw className="h-4 w-4" />
+              刷新基金池
+            </Button>
+          </div>
         )}
       />
 
+      <FundsQuickNav activeId={activeSection} />
+
+      <div id="funds-market" className="scroll-mt-24 lg:scroll-mt-20">
       <MarketRankingWorkbench
         rankings={marketRankings}
         recommendations={todayRecommendations}
@@ -3344,14 +3601,16 @@ const FundsPage: React.FC = () => {
         poolCodes={poolCodes}
         addingCode={addingCode}
       />
+      </div>
 
-      <InlineAlert
-        variant="info"
-        title="决策分层"
-        message="公开榜单只回答“市场上哪些产品值得观察”；加入基金池后才做单品画像和回测；只有用户画像与已确认持仓齐备时，才会进入个人加减仓动作。"
-      />
+      <p className="flex items-start gap-2 px-1 text-xs leading-5 text-muted-text">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan" />
+        <span>
+          决策分层：公开榜单只回答“哪些产品值得观察”，加入基金池后才做单品画像与回测，个人加减仓动作需用户画像与已确认持仓齐备。已知代码可用上方“搜基”快速定位。
+        </span>
+      </p>
 
-      <section className="rounded-[28px] border border-border/70 bg-surface-2/35 p-3 sm:p-4">
+      <section id="funds-search" className="scroll-mt-24 rounded-[28px] border border-border/70 bg-surface-2/35 p-3 sm:p-4 lg:scroll-mt-20">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -3419,7 +3678,50 @@ const FundsPage: React.FC = () => {
 
       {error ? <ApiErrorAlert error={error} onDismiss={() => setError(null)} /> : null}
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div id="funds-holdings" className="scroll-mt-24 lg:scroll-mt-20">
+      <FundHoldingImportAssistant
+        onImported={() => {
+          void loadPool();
+          void loadPersonalActions();
+        }}
+      />
+      </div>
+
+      <div id="funds-actions" className="scroll-mt-24 lg:scroll-mt-20">
+      <PersonalActionsPanel
+        actions={personalActions}
+        isLoading={personalActionsLoading}
+        error={personalActionsError}
+        onRefresh={() => void loadPersonalActions()}
+      />
+      </div>
+
+      <div id="funds-ledger" className="scroll-mt-24 lg:scroll-mt-20">
+      <FundLedgerSwitcher
+        ledgers={ledgers}
+        selectedLedgerId={selectedLedgerId}
+        totalCount={items.length}
+        visibleCount={visibleItems.length}
+        newLedgerName={newLedgerName}
+        newLedgerColor={newLedgerColor}
+        creatingLedger={creatingLedger}
+        ledgerNameDraft={ledgerNameDraft}
+        ledgerColorDraft={ledgerColorDraft}
+        profileDraft={ledgerProfileDraft}
+        savingProfile={savingLedgerProfile}
+        onSelect={setSelectedLedgerId}
+        onNameChange={setNewLedgerName}
+        onColorChange={setNewLedgerColor}
+        onCreate={() => void handleCreateLedger()}
+        onLedgerNameChange={setLedgerNameDraft}
+        onLedgerColorChange={setLedgerColorDraft}
+        onProfileChange={handleLedgerProfileChange}
+        onSaveProfile={() => void handleSaveLedgerProfile()}
+      />
+      </div>
+
+      <div id="funds-pool" className="scroll-mt-24 lg:scroll-mt-20">
+      <div className="mb-3 grid gap-3 md:grid-cols-3">
         <StatCard
           label={selectedLedger ? selectedLedger.name : '基金池'}
           value={`${visibleItems.length}`}
@@ -3442,39 +3744,6 @@ const FundsPage: React.FC = () => {
           icon={<CheckCircle2 className="h-5 w-5" />}
         />
       </div>
-
-      <FundHoldingImportAssistant
-        onImported={() => {
-          void loadPool();
-          void loadPersonalActions();
-        }}
-      />
-
-      <PersonalActionsPanel
-        actions={personalActions}
-        isLoading={personalActionsLoading}
-        error={personalActionsError}
-        onRefresh={() => void loadPersonalActions()}
-      />
-
-      <FundLedgerSwitcher
-        ledgers={ledgers}
-        selectedLedgerId={selectedLedgerId}
-        totalCount={items.length}
-        visibleCount={visibleItems.length}
-        newLedgerName={newLedgerName}
-        newLedgerColor={newLedgerColor}
-        creatingLedger={creatingLedger}
-        profileDraft={ledgerProfileDraft}
-        savingProfile={savingLedgerProfile}
-        onSelect={setSelectedLedgerId}
-        onNameChange={setNewLedgerName}
-        onColorChange={setNewLedgerColor}
-        onCreate={() => void handleCreateLedger()}
-        onProfileChange={handleLedgerProfileChange}
-        onSaveProfile={() => void handleSaveLedgerProfile()}
-      />
-
       {loading ? (
         <Card>
           <div className="flex items-center gap-3 text-sm text-secondary-text">
@@ -3506,6 +3775,7 @@ const FundsPage: React.FC = () => {
           onRunBacktest={(fundCode) => void handleRunBacktest(fundCode)}
         />
       )}
+      </div>
     </AppPage>
   );
 };

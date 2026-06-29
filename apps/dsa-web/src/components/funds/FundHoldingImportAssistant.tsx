@@ -719,40 +719,59 @@ export const FundHoldingImportAssistant: React.FC<{
                           </div>
                           <Badge variant="default">{sourceBreakdown.length} 源</Badge>
                         </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs xl:grid-cols-4">
-                          <div>
-                            <p className="text-muted-text">市值</p>
-                            <p className="mt-1 font-semibold text-foreground">{displayExactAmount(marketValue, amountsVisible)}</p>
+                        {amountsVisible ? (
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs xl:grid-cols-4">
+                            <div>
+                              <p className="text-muted-text">市值</p>
+                              <p className="mt-1 font-semibold text-foreground">{displayExactAmount(marketValue, amountsVisible)}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-text">成本</p>
+                              <p className="mt-1 font-semibold text-foreground">{displayExactAmount(costAmount, amountsVisible)}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-text">盈亏</p>
+                              <p className={`mt-1 font-semibold ${pnlAmount !== null && pnlAmount < 0 ? 'text-danger' : 'text-success'}`}>
+                                {displayExactAmount(pnlAmount, amountsVisible)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-text">收益率</p>
+                              <p className={`mt-1 font-semibold ${pnlPct !== null && pnlPct < 0 ? 'text-danger' : 'text-success'}`}>
+                                {displayPercent(pnlPct, amountsVisible)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-text">成本单价</p>
+                              <p className="mt-1 font-semibold text-foreground">{displayUnitPrice(unitCost, amountsVisible)}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-text">份额</p>
+                              <p className="mt-1 font-semibold text-foreground">{displayPlainNumber(units, amountsVisible, 2)}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-text">最新净值</p>
+                              <p className="mt-1 font-semibold text-foreground">{numberText(latestNav, 4) || '--'}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-muted-text">成本</p>
-                            <p className="mt-1 font-semibold text-foreground">{displayExactAmount(costAmount, amountsVisible)}</p>
+                        ) : (
+                          <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                            <span className="text-muted-text">
+                              最新净值
+                              <span className="ml-1 font-semibold text-foreground">{numberText(latestNav, 4) || '--'}</span>
+                            </span>
+                            <span className={`font-semibold ${
+                              pnlAmount === null && pnlPct === null
+                                ? 'text-muted-text'
+                                : (pnlAmount ?? pnlPct ?? 0) < 0
+                                  ? 'text-danger'
+                                  : 'text-success'
+                            }`}>
+                              {pnlAmount === null && pnlPct === null ? '方向未知' : (pnlAmount ?? pnlPct ?? 0) < 0 ? '浮亏' : '浮盈'}
+                              <span className="ml-1 text-muted-text">· 金额已隐藏</span>
+                            </span>
                           </div>
-                          <div>
-                            <p className="text-muted-text">盈亏</p>
-                            <p className={`mt-1 font-semibold ${pnlAmount !== null && pnlAmount < 0 ? 'text-danger' : 'text-success'}`}>
-                              {displayExactAmount(pnlAmount, amountsVisible)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-muted-text">收益率</p>
-                            <p className={`mt-1 font-semibold ${pnlPct !== null && pnlPct < 0 ? 'text-danger' : 'text-success'}`}>
-                              {displayPercent(pnlPct, amountsVisible)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-muted-text">成本单价</p>
-                            <p className="mt-1 font-semibold text-foreground">{displayUnitPrice(unitCost, amountsVisible)}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-text">份额</p>
-                            <p className="mt-1 font-semibold text-foreground">{displayPlainNumber(units, amountsVisible, 2)}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-text">最新净值</p>
-                            <p className="mt-1 font-semibold text-foreground">{numberText(latestNav, 4) || '--'}</p>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     );
                   })}

@@ -69,6 +69,8 @@ export type FundLedger = {
 };
 
 export type FundLedgerProfilePayload = {
+  name?: string | null;
+  color?: string | null;
   accountType?: string | null;
   purpose?: string | null;
   riskTarget?: string | null;
@@ -449,6 +451,8 @@ export const fundsApi = {
 
   async updateLedgerProfile(ledgerId: number, payload: FundLedgerProfilePayload): Promise<FundLedger> {
     const response = await apiClient.patch(`/api/v1/funds/ledgers/${ledgerId}`, {
+      name: payload.name,
+      color: payload.color,
       account_type: payload.accountType,
       purpose: payload.purpose,
       risk_target: payload.riskTarget,

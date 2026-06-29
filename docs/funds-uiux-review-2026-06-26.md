@@ -15,6 +15,14 @@
 
 本轮工程重心建议：**先做信息架构收口（分区 + 折叠 + 移动端不溢出），再做证据卡/持仓/个人动作三块的"空态降级"与"状态视觉分层"**。不需要新增数据能力即可显著提升可用性。
 
+> **重要修订（2026-06-26 实施后）**：本文初稿的实时走查命中了**过期的前端构建产物**（后端 `static/` 下的旧 bundle 未跟随源码刷新）。重建 `apps/dsa-web` 后核对当前源码，结论需修正如下，且部分问题在源码中已先行解决：
+> - **页面高度**：初稿的"桌面 13,300px / 移动 18,800px"是旧构建下的表现。**重建后桌面整页约 8,170px（≈9 屏，1280px 视口）**，仍偏长但远没有初稿严重。
+> - **P0-3 持仓双重渲染**：源码**已实现**"单视图 + 聚合/明细切换"（`FundHoldingImportAssistant.tsx` 的 `confirmedView`），不再上下并列两套。**判定：源码已解决**，旧构建才会双渲染。
+> - **P0-2 移动端明细表**：源码**已为明细表加** `overflow-auto` 容器 + "可左右滑动查看"提示（`:763-765`），并有组合摘要/平台分布卡。**判定：基本已解决**，仍可后续优化为窄屏卡片。
+> - **P0-3-bis 荐基卡数量**：源码荐基卡已 `slice(0,5)`（不是 10），证据/风险/失效条件分别 `slice(0,2)`/`slice(0,3)`/`line-clamp-2`，密度比旧构建低。
+> - **P0-2-bis 顶部悬浮按钮"遮挡"**：经核对是**全局 sticky/fixed 头部的正常行为**（移动端 `fixed top-3` 工具条 + 内容 `pt-14` 让位），并非选基专属缺陷。**判定：非缺陷，撤销**。
+> - **本轮已落地**：**T1 sticky 分区快捷导航**（见 §5 状态列）。其余 P1/P2 仍按下表推进。
+
 ---
 
 ## 1. 评审方法与证据
@@ -188,21 +196,25 @@
 
 ## 5. 工程改造任务清单（可直接排期）
 
-| ID | 任务 | 严重级 | 主要文件 | 预估 | 依赖 |
-| --- | --- | --- | --- | --- | --- |
-| T1 | sticky 分区导航 + 4 分组 + 非首屏默认折叠 | P0 | `FundsPage.tsx:3168-3367`（新增 `FundsSectionNav` / `<section id>` / 折叠态） | M | 无 |
-| T2 | 移动端：明细表降级（卡片或横滑）+ 9 列网格断点处理 | P0 | `FundHoldingImportAssistant.tsx:586-630` | S | 无 |
-| T3 | 移动端：悬浮语言/主题按钮避让内容 | P0 | `components/layout/ShellHeader.tsx` | S | 无 |
-| T4 | 持仓双重渲染合并为"单视图 + 聚合/明细切换" | P0 | `FundHoldingImportAssistant.tsx:495-630` | M | T2 |
-| T5 | 荐基证据卡精简：正向证据默认显示，边界/风险折叠，失效条件上提 | P1 | `FundsPage.tsx:1245-1659` | M | 无 |
-| T6 | 个人动作 0 动作时区块级降级为引导态 + CTA | P1 | `FundsPage.tsx:1660-1853` | M | 无 |
-| T7 | 闭眼模式紧凑布局（方向/占比可见，不泄金额） | P1 | `FundHoldingImportAssistant.tsx:39-66, 524-630` | S | T4 |
-| T8 | 评分/徽章统一图例 + tooltip（`ScoreLegend`） | P1 | `FundsPage.tsx:1245-1853` | S | 无 |
-| T9 | 四态数据状态视觉令牌（语义态→视觉映射）全页统一 | P2 | `FundsPage.tsx:454-487` + 各调用点 | M | 无 |
-| T10 | 搜基入口上移常驻 + 决策分层提示降级为分区副标题 | P2 | `FundsPage.tsx:3206-3276` | S | T1 |
-| T11 | StatCard 合并进分区头部统计条 + 去重文案 | P2 | `FundsPage.tsx:3280-3302` | S | T1 |
+| ID | 任务 | 严重级 | 状态 | 主要文件 | 预估 | 依赖 |
+| --- | --- | --- | --- | --- | --- | --- |
+| T1 | sticky 分区快捷导航（市场榜单/搜基/持仓/个人动作/账本/基金池）+ 锚点跳转 + 滚动高亮 | P0 | ✅ 已实现 | `FundsPage.tsx`（新增 `FUNDS_SECTIONS` / `FundsQuickNav` / IntersectionObserver scrollspy / 6 个 `<div id>` 锚点） | M | 无 |
+| T2 | 移动端明细表降级（横滑容器 + 提示） | P0 | ✅ 源码已解决（可再优化为窄屏卡片） | `FundHoldingImportAssistant.tsx:761-803` | S | 无 |
+| T3 | 移动端悬浮按钮避让 | P0 | ⛔ 撤销（非缺陷，系全局 sticky 头部正常行为） | — | — | — |
+| T4 | 持仓双重渲染合并为"单视图 + 聚合/明细切换" | P0 | ✅ 源码已解决（`confirmedView`） | `FundHoldingImportAssistant.tsx:587-606,699-804` | M | — |
+| T5 | 荐基证据卡精简：正向证据默认显示，回测/单品/风险/失效条件收进“查看证据与边界”折叠 | P1 | ✅ 已实现 | `FundsPage.tsx`（`RecommendationEvidenceCard` + `showDetail`） | M | 无 |
+| T6 | 个人动作 0 动作时区块级降级为引导态 + CTA，逐条阻塞收进“查看 N 条阻塞明细”折叠 | P1 | ✅ 已实现 | `FundsPage.tsx`（`PersonalActionsPanel` + `noActionable`/`showBlockedDetail`） | M | 无 |
+| T7 | 闭眼模式紧凑布局（净值 + 浮盈/浮亏方向可见，不泄金额） | P1 | ✅ 已实现（聚合卡；明细表仍走横滑遮蔽，可后续再压缩） | `FundHoldingImportAssistant.tsx`（聚合卡 masked 分支） | S | T4 |
+| T8 | 评分/徽章统一图例 + tooltip（`ScoreLegend`） | P1 | ✅ 已实现（荐基 + 个人动作头部） | `FundsPage.tsx`（`ScoreLegend` + `Tooltip`） | S | 无 |
+| T9 | 数据状态统一口径图例（已实接/计算中·代理/待接入/需用户确认）页头常驻 | P2 | ✅ 已实现（图例 + 口径集中在 `coverageVariant`/`contextVariant`/`evidenceVariant`）；逐徽章视觉令牌全量迁移留作可选后续 | `FundsPage.tsx`（`DataStateLegend` + `DATA_STATE_LEGEND`） | M | 无 |
+| T10 | 决策分层横幅降级为紧凑提示 + 已知代码跳转提示（物理上移由 T1 快捷导航替代） | P2 | ✅ 已实现 | `FundsPage.tsx`（决策分层 note） | S | T1 |
+| T11 | StatCard 上移并入基金池分区头部，去重位置与空值大卡 | P2 | ✅ 已实现 | `FundsPage.tsx`（`#funds-pool` 头部） | S | T1 |
 
-排期建议：**先 T1/T2/T3/T4（P0 一批，IA + 移动端不溢出）→ 再 T5/T6/T7/T8（P1 空态与证据降级）→ 最后 T9/T10/T11（一致性打磨）**。T9 可与 P1 并行。
+> 行号在重建后有偏移，定位以组件名为准（`FundsQuickNav` / `ScoreLegend` / `DataStateLegend` / `RecommendationEvidenceCard` / `PersonalActionsPanel` / `FundHoldingImportAssistant`）。
+
+排期进度：**P0 + P1 + P2 已全部收口**（T1/T5/T6/T7/T8/T9/T10/T11 实现，T2/T4 源码已解决，T3 撤销）。默认折叠态整页约 8,170px → **约 6,330px**（1280px 桌面，约 -22%），展开按需加载。
+
+> 可选后续（非本轮）：T9 的"逐徽章视觉令牌全量迁移"——把全站 coverage/context/evidence 徽章替换为带虚线/描边区分真实 vs 代理的统一组件。本轮已通过页头图例 + 集中的 variant 映射函数满足"口径统一与可读"，全量视觉迁移因涉及共享 `Badge` 组件、回归面较大，建议独立一轮处理。
 
 ---
 
